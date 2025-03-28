@@ -38,6 +38,9 @@
 - `OrbitControls` - Enables interactive camera controls with mouse/touch
 - `AmbientLight` - Provides uniform illumination to all objects
 - `DirectionalLight` - Simulates sunlight with parallel light rays and shadows
+- `HemisphereLight` - Creates realistic outdoor lighting with sky and ground colors
+- `PointLight` - Emits light in all directions from a single point
+- `FogExp2` - Creates exponential fog effect for depth perception
 - `PlaneGeometry` - Creates flat rectangular surfaces (used for the ground)
 - `BoxGeometry` - Creates cubic or rectangular prism shapes
 - `MeshStandardMaterial` - Physically-based material with properties like roughness and metalness
@@ -55,7 +58,11 @@
   - Orbit view for development and free exploration
   - Top-down view for strategic overview
   - Follow view for behind-the-vehicle gameplay perspective
-- Lighting system - Combination of ambient and directional lights with shadows
+- Advanced lighting system:
+  - Multiple light types for realistic illumination
+  - Carefully configured shadow parameters
+  - Dynamic ambient and directional lighting
+  - Atmospheric fog for depth and environment immersion
 
 ### System Architecture
 
@@ -70,6 +77,12 @@
   - Mathematical functions for height variations
   - Distance-based edge smoothing
   - Performance optimizations for vertex manipulations
+
+- Lighting management:
+  - Modular setupLighting() function
+  - Light types organized for different purposes
+  - Shadow optimization with camera frustum settings
+  - Color temperatures tuned for outdoor environment
 
 ### Future Architecture Considerations
 

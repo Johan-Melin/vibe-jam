@@ -70,3 +70,21 @@
   - createGroundPlane() for ground creation and setup
   - addTerrainVariations() for height map generation
 - Implemented more detailed geometry with additional vertices for terrain detail
+
+## Step 6: Advanced Lighting System - Completed
+- Refactored lighting into a dedicated setup function:
+  - Modular approach that allows for easy adjustment and expansion
+  - Clear separation of lighting concerns from other game systems
+- Enhanced lighting with multiple light types:
+  - Ambient light with blue tint for atmospheric illumination
+  - Directional light with warm color as the main sun
+  - Hemisphere light for more realistic outdoor environment
+  - Point light near the player's position for better focus
+- Improved shadow quality:
+  - Optimized shadow camera parameters
+  - Adjusted shadow map sizes for performance and quality balance
+  - Added shadow bias to reduce shadow acne artifacts
+- Added fog effect:
+  - Exponential fog that matches the sky color
+  - Enhances depth perception in the 3D environment
+  - Creates atmospheric distance effect
