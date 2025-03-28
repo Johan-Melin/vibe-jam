@@ -47,6 +47,7 @@
 - `CylinderGeometry` - Creates cylinder shapes (used for wheels)
 - `MeshStandardMaterial` - Physically-based material with properties like roughness and metalness
 - `GridHelper` - Visual representation of a grid to help with spatial awareness
+- `Vector3` - Three-dimensional vector for position and direction calculations
 
 ### Core Game Elements
 
@@ -60,6 +61,11 @@
   - Realistic materials with appropriate metalness and roughness
   - Animated wheels for visual feedback
   - Structured for future input-based movement
+- Vehicle movement system:
+  - Physics-based movement with acceleration and deceleration
+  - Keyboard controls for directional input
+  - Realistic turning mechanics based on vehicle speed
+  - Dynamic wheel rotation tied to movement speed
 - Camera system - Multiple camera views with state management:
   - Orbit view for development and free exploration
   - Top-down view for strategic overview
@@ -76,6 +82,7 @@
   - Predefined camera positions and targets for different views
   - Keyboard-triggered state switching between views
   - Orbit controls enabled/disabled based on the active view
+  - Follow camera with dynamic positioning behind vehicle
   - Easily extensible for additional view types
 
 - Terrain generation system:
@@ -96,12 +103,24 @@
   - Organized component references for animation and control
   - Shadow-casting configuration for all components
 
+- Input handling system:
+  - Keyboard event listeners for user input
+  - Control mapping for vehicle movement
+  - State tracking for simultaneous key presses
+  - Event-based architecture for input responsiveness
+
+- Vehicle physics:
+  - Speed and acceleration calculation
+  - Angular velocity and rotation
+  - Direction vector management
+  - Time-based movement calculations
+
 ### Future Architecture Considerations
 
 As development progresses, the project will likely expand to include:
 
-- Vehicle movement controls
-- Physics and collision detection
-- Zombie entities and behavior
+- Collision detection with environment and zombies
+- Zombie entity management and behavior AI
 - Game scoring and progression system
 - Asset loading and management
+- Sound effects and music integration

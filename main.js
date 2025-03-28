@@ -240,6 +240,173 @@ function createVehicle() {
     };
 }
 
+// Vehicle movement controls and state
+const vehicleControls = {
+    speed: 0,
+    maxSpeed: 0.5,
+    acceleration: 0.01,
+    deceleration: 0.005,
+    reverseMaxSpeed: -0.2,
+    turnSpeed: 0.03,
+    maxTurnSpeed: 0.05,
+    wheelRotationSpeed: 0.2,
+    keys: {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        brake: false
+    },
+    position: new THREE.Vector3(0, 0, 0),
+    rotation: 0,
+    // Track vehicle's forward direction vector for camera follow
+    direction: new THREE.Vector3(0, 0, -1)
+};
+
+// Function to update vehicle position and rotation based on controls
+function updateVehicleMovement(deltaTime) {
+    const controls = vehicleControls;
+    
+    // Apply acceleration/deceleration based on key inputs
+    if (controls.keys.forward) {
+        controls.speed += controls.acceleration;
+        if (controls.speed > controls.maxSpeed) {
+            controls.speed = controls.maxSpeed;
+        }
+    } else if (controls.keys.backward) {
+        controls.speed -= controls.acceleration;
+        if (controls.speed < controls.reverseMaxSpeed) {
+            controls.speed = controls.reverseMaxSpeed;
+        }
+    } else {
+        // Apply natural deceleration when no keys pressed
+        if (Math.abs(controls.speed) < controls.deceleration) {
+            controls.speed = 0;
+        } else if (controls.speed > 0) {
+            controls.speed -= controls.deceleration;
+        } else if (controls.speed < 0) {
+            controls.speed += controls.deceleration;
+        }
+    }
+    
+    // Apply braking when space is pressed
+    if (controls.keys.brake) {
+        if (Math.abs(controls.speed) < controls.deceleration * 3) {
+            controls.speed = 0;
+        } else if (controls.speed > 0) {
+            controls.speed -= controls.deceleration * 3;
+        } else if (controls.speed < 0) {
+            controls.speed += controls.deceleration * 3;
+        }
+    }
+    
+    // Apply turning based on key inputs (only when moving)
+    if (Math.abs(controls.speed) > 0.01) {
+        const turnAmount = controls.turnSpeed * (controls.speed > 0 ? 1 : -1);
+        
+        if (controls.keys.left) {
+            controls.rotation += turnAmount;
+        }
+        if (controls.keys.right) {
+            controls.rotation -= turnAmount;
+        }
+    }
+    
+    // Calculate new position based on speed and rotation
+    const velocity = new THREE.Vector3(
+        Math.sin(controls.rotation) * controls.speed,
+        0,
+        Math.cos(controls.rotation) * controls.speed
+    );
+    
+    // Update vehicle position
+    vehicle.group.position.add(velocity);
+    
+    // Update vehicle rotation
+    vehicle.group.rotation.y = controls.rotation;
+    
+    // Update the direction vector for camera follow
+    controls.direction.set(
+        Math.sin(controls.rotation),
+        0,
+        Math.cos(controls.rotation)
+    );
+    
+    // Rotate wheels based on speed
+    const wheelRotationAmount = controls.speed * controls.wheelRotationSpeed;
+    vehicle.wheels.forEach(wheel => {
+        wheel.rotation.x += wheelRotationAmount;
+    });
+    
+    // Update follow camera position if active
+    if (currentCameraState === 'follow') {
+        updateFollowCamera();
+    }
+}
+
+// Function to update the follow camera position based on vehicle
+function updateFollowCamera() {
+    // Get vehicle position and rotation
+    const vehiclePosition = vehicle.group.position.clone();
+    const vehicleDirection = vehicleControls.direction.clone().multiplyScalar(-1); // Behind vehicle
+    
+    // Position camera behind vehicle
+    const cameraOffset = new THREE.Vector3(
+        vehicleDirection.x * 6, // Distance behind
+        3, // Height
+        vehicleDirection.z * 6 // Distance behind
+    );
+    
+    // Set camera position and target
+    camera.position.copy(vehiclePosition.clone().add(cameraOffset));
+    camera.lookAt(
+        vehiclePosition.clone().add(new THREE.Vector3(0, 1, 0)) // Look at vehicle, slightly above ground
+    );
+}
+
+// Set up key controls for vehicle
+function setupVehicleControls() {
+    window.addEventListener('keydown', (event) => {
+        switch(event.key) {
+            case 'ArrowUp':
+                vehicleControls.keys.forward = true;
+                break;
+            case 'ArrowDown':
+                vehicleControls.keys.backward = true;
+                break;
+            case 'ArrowLeft':
+                vehicleControls.keys.left = true;
+                break;
+            case 'ArrowRight':
+                vehicleControls.keys.right = true;
+                break;
+            case ' ': // Space bar for brakes
+                vehicleControls.keys.brake = true;
+                break;
+        }
+    });
+    
+    window.addEventListener('keyup', (event) => {
+        switch(event.key) {
+            case 'ArrowUp':
+                vehicleControls.keys.forward = false;
+                break;
+            case 'ArrowDown':
+                vehicleControls.keys.backward = false;
+                break;
+            case 'ArrowLeft':
+                vehicleControls.keys.left = false;
+                break;
+            case 'ArrowRight':
+                vehicleControls.keys.right = false;
+                break;
+            case ' ': // Space bar for brakes
+                vehicleControls.keys.brake = false;
+                break;
+        }
+    });
+}
+
 // Set up lighting
 const lights = setupLighting();
 
@@ -248,6 +415,9 @@ const ground = createGroundPlane();
 
 // Create the vehicle
 const vehicle = createVehicle();
+
+// Set up vehicle controls
+setupVehicleControls();
 
 // Add camera controls
 const orbitControls = new OrbitControls(camera, renderer.domElement);
@@ -298,6 +468,11 @@ function switchCameraState(stateName) {
     orbitControls.update();
     
     currentCameraState = stateName;
+    
+    // If switching to follow camera, update its position immediately
+    if (stateName === 'follow') {
+        updateFollowCamera();
+    }
 }
 
 // Add keyboard controls for camera states
@@ -323,16 +498,19 @@ window.addEventListener('resize', () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
+// Track time for animation
+let previousTime = 0;
+
 // Animation loop
-function animate() {
+function animate(time) {
     requestAnimationFrame(animate);
     
-    // Animate the vehicle wheels
-    if (vehicle && vehicle.wheels) {
-        vehicle.wheels.forEach(wheel => {
-            wheel.rotation.x += 0.01; // Rotate wheels
-        });
-    }
+    // Calculate time delta for smooth animation
+    const deltaTime = time - previousTime;
+    previousTime = time;
+    
+    // Update vehicle movement
+    updateVehicleMovement(deltaTime);
     
     // Update orbit controls (if enabled)
     orbitControls.update();
@@ -342,4 +520,4 @@ function animate() {
 }
 
 // Start the animation loop
-animate(); 
+animate(0); 

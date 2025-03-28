@@ -105,3 +105,26 @@
 - Replaced placeholder cube with the new vehicle model
 - Updated camera positions and targets to focus on the vehicle
 - Created a modular createVehicle() function for future expandability
+
+## Step 8: Vehicle Movement Controls - Completed
+- Implemented vehicle physics and movement model:
+  - Created vehicleControls object to track movement state
+  - Added speed, acceleration, and deceleration properties
+  - Implemented realistic turning mechanics
+  - Set up directional vectors for movement
+- Added keyboard input handling:
+  - Arrow keys for directional movement (up/down/left/right)
+  - Space bar for braking
+  - Key listeners for both keydown and keyup events
+- Implemented vehicle animation:
+  - Dynamic wheel rotation based on vehicle speed
+  - Proper vehicle rotation based on steering input
+  - Time-based animation for consistent movement across frame rates
+- Enhanced the follow camera:
+  - Camera now properly follows behind the vehicle
+  - Automatic repositioning based on vehicle direction
+  - Smooth transitions when switching to follow view
+- Updated the main animation loop:
+  - Added time tracking for delta-time calculations
+  - Integrated vehicle movement into the render loop
+  - Improved performance with optimized calculations
