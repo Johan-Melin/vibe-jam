@@ -38,17 +38,68 @@ scene.add(directionalLight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-// Add a ground plane
-const groundGeometry = new THREE.PlaneGeometry(100, 100);
-const groundMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x555555,
-    roughness: 0.8,
-    metalness: 0.2
-});
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2; // Rotate to be flat on XZ plane
-ground.receiveShadow = true;
-scene.add(ground);
+// Create enhanced ground
+function createGroundPlane() {
+    // Create grid texture procedurally
+    const gridSize = 1000;
+    const gridDivisions = 100;
+    const gridTexture = new THREE.TextureLoader().load('');
+    
+    // Create ground with size of 200x200 for larger play area
+    const groundGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
+    
+    // Custom shader material for the ground
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x48763C, // Green for grass
+        roughness: 0.8,
+        metalness: 0.2,
+    });
+    
+    // Create the ground mesh
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2; // Rotate to be flat on XZ plane
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Add grid helper for better visual reference
+    const gridHelper = new THREE.GridHelper(200, 50, 0x000000, 0x000000);
+    gridHelper.position.y = 0.01; // Slightly above ground to prevent z-fighting
+    gridHelper.material.opacity = 0.2;
+    gridHelper.material.transparent = true;
+    scene.add(gridHelper);
+
+    // Add some simple terrain variations
+    addTerrainVariations(ground);
+    
+    return ground;
+}
+
+// Add simple terrain variations
+function addTerrainVariations(ground) {
+    // Create some random bumps and hills
+    const vertices = ground.geometry.attributes.position.array;
+    for (let i = 0; i < vertices.length; i += 3) {
+        // Only modify y values (height)
+        if (i % 3 === 1) {
+            // Skip edges to keep a flat border
+            const xPos = vertices[i - 1];
+            const zPos = vertices[i + 1];
+            const distFromCenter = Math.sqrt(xPos * xPos + zPos * zPos);
+            
+            if (distFromCenter < 90) { // Keep borders flat
+                // Create gentle, random terrain bumps
+                vertices[i] = Math.sin(xPos / 10) * Math.cos(zPos / 10) * 0.5;
+            }
+        }
+    }
+    
+    // Update the geometry
+    ground.geometry.attributes.position.needsUpdate = true;
+    ground.geometry.computeVertexNormals();
+}
+
+// Create the ground
+const ground = createGroundPlane();
 
 // Add a test cube with proper material
 const geometry = new THREE.BoxGeometry(2, 2, 2);

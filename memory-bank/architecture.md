@@ -41,10 +41,15 @@
 - `PlaneGeometry` - Creates flat rectangular surfaces (used for the ground)
 - `BoxGeometry` - Creates cubic or rectangular prism shapes
 - `MeshStandardMaterial` - Physically-based material with properties like roughness and metalness
+- `GridHelper` - Visual representation of a grid to help with spatial awareness
 
 ### Core Game Elements
 
-- Ground plane - Large flat surface representing the game world
+- Enhanced ground system:
+  - Large terrain with gentle elevation variations
+  - Procedurally modified vertices for natural-looking landscape
+  - Grid overlay for improved spatial reference
+  - Edge flattening for playable boundaries
 - Test cube - Basic 3D object with shadow casting for testing
 - Camera system - Multiple camera views with state management:
   - Orbit view for development and free exploration
@@ -59,6 +64,12 @@
   - Keyboard-triggered state switching between views
   - Orbit controls enabled/disabled based on the active view
   - Easily extensible for additional view types
+
+- Terrain generation system:
+  - Function-based approach to terrain creation
+  - Mathematical functions for height variations
+  - Distance-based edge smoothing
+  - Performance optimizations for vertex manipulations
 
 ### Future Architecture Considerations
 
