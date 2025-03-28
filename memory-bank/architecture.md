@@ -46,8 +46,19 @@
 
 - Ground plane - Large flat surface representing the game world
 - Test cube - Basic 3D object with shadow casting for testing
-- Camera controls - Allows orbit, pan and zoom to view the scene
+- Camera system - Multiple camera views with state management:
+  - Orbit view for development and free exploration
+  - Top-down view for strategic overview
+  - Follow view for behind-the-vehicle gameplay perspective
 - Lighting system - Combination of ambient and directional lights with shadows
+
+### System Architecture
+
+- Camera state management:
+  - Predefined camera positions and targets for different views
+  - Keyboard-triggered state switching between views
+  - Orbit controls enabled/disabled based on the active view
+  - Easily extensible for additional view types
 
 ### Future Architecture Considerations
 

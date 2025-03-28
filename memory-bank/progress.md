@@ -41,3 +41,18 @@
   - Imported OrbitControls from Three.js examples
   - Configured with smooth damping
   - Limited polar angle to prevent going below ground
+
+## Step 4: Camera Controls Enhancement - Completed
+- Expanded orbit controls with better configuration:
+  - Modified screen space panning behavior
+  - Adjusted minimum and maximum distances
+  - Added damping for smoother camera movement
+- Implemented multiple camera views:
+  - Orbit view: standard interactive camera for development
+  - Top-down view: birds-eye perspective for strategic overview
+  - Follow view: behind-the-vehicle perspective for gameplay
+- Added keyboard controls to switch between views:
+  - Key 1: Orbit view
+  - Key 2: Top-down view
+  - Key 3: Follow view
+- Created camera state management system for easy transitions between views

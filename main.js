@@ -63,14 +63,71 @@ cube.receiveShadow = true;
 cube.position.y = 1; // Raise the cube so it sits on the ground
 scene.add(cube);
 
-// Add orbit controls
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; // Add smooth damping effect
-controls.dampingFactor = 0.05;
-controls.minDistance = 5;
-controls.maxDistance = 50;
-controls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
-controls.update();
+// Add camera controls
+const orbitControls = new OrbitControls(camera, renderer.domElement);
+orbitControls.enableDamping = true; // Add smooth damping effect
+orbitControls.dampingFactor = 0.05;
+orbitControls.minDistance = 5;
+orbitControls.maxDistance = 50;
+orbitControls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
+orbitControls.screenSpacePanning = false; // Use orbit instead of panning when shifting
+
+// Create a camera state manager for different views
+const cameraStates = {
+    orbit: {
+        position: new THREE.Vector3(0, 5, 10),
+        target: new THREE.Vector3(0, 0, 0),
+        enabled: true
+    },
+    top: {
+        position: new THREE.Vector3(0, 20, 0),
+        target: new THREE.Vector3(0, 0, 0),
+        enabled: false
+    },
+    follow: {
+        position: new THREE.Vector3(0, 3, -5),
+        target: new THREE.Vector3(0, 1, 0),
+        enabled: false
+    }
+};
+
+let currentCameraState = 'orbit';
+
+// Function to switch camera state
+function switchCameraState(stateName) {
+    if (!cameraStates[stateName]) return;
+    
+    const state = cameraStates[stateName];
+    
+    // Transition camera position and target
+    const targetPosition = state.position.clone();
+    const targetLookAt = state.target.clone();
+    
+    // Set camera properties
+    camera.position.copy(targetPosition);
+    orbitControls.target.copy(targetLookAt);
+    orbitControls.enabled = state.enabled;
+    
+    // Update orbit controls
+    orbitControls.update();
+    
+    currentCameraState = stateName;
+}
+
+// Add keyboard controls for camera states
+window.addEventListener('keydown', (event) => {
+    switch(event.key) {
+        case '1': // Orbit view
+            switchCameraState('orbit');
+            break;
+        case '2': // Top-down view
+            switchCameraState('top');
+            break;
+        case '3': // Follow view
+            switchCameraState('follow');
+            break;
+    }
+});
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -88,8 +145,8 @@ function animate() {
     cube.rotation.x += 0.01;
     cube.rotation.y += 0.01;
     
-    // Update controls
-    controls.update();
+    // Update orbit controls (if enabled)
+    orbitControls.update();
     
     // Render the scene
     renderer.render(scene, camera);
