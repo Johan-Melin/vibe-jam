@@ -7,6 +7,123 @@ scene.background = new THREE.Color(0x87ceeb); // Sky blue background
 // Add fog to the scene for atmosphere and depth
 scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
 
+// Set up audio for the engine sound
+let engineSound;
+let audioListener;
+let audioLoaded = false;
+let audioContext;
+
+// Initialize audio system but don't play yet
+function setupAudio() {
+    // Create an audio listener and add it to the camera
+    audioListener = new THREE.AudioListener();
+    camera.add(audioListener);
+    
+    // Store audio context for resuming later
+    audioContext = audioListener.context;
+    
+    // Create a global audio source for the engine
+    engineSound = new THREE.Audio(audioListener);
+    
+    // Load a sound and set it as the Audio object's buffer
+    const audioLoader = new THREE.AudioLoader();
+    audioLoader.load('./sounds/engine_loop.mp3', function(buffer) {
+        engineSound.setBuffer(buffer);
+        engineSound.setLoop(true);
+        engineSound.setVolume(0.5);
+        // Don't autoplay - wait for user interaction
+        audioLoaded = true;
+        
+        // Start with idle engine sound when played
+        engineSound.setPlaybackRate(0.5);
+        
+        // Show a message to the user
+        showAudioStartMessage();
+    },
+    // onProgress callback
+    function(xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },
+    // onError callback
+    function(err) {
+        console.error('Could not load engine sound: ' + err);
+    });
+}
+
+// Display a message to the user about starting audio
+function showAudioStartMessage() {
+    // Create a simple overlay message
+    const messageDiv = document.createElement('div');
+    messageDiv.id = 'audio-message';
+    messageDiv.style.position = 'absolute';
+    messageDiv.style.top = '20px';
+    messageDiv.style.left = '50%';
+    messageDiv.style.transform = 'translateX(-50%)';
+    messageDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    messageDiv.style.color = 'white';
+    messageDiv.style.padding = '10px 20px';
+    messageDiv.style.borderRadius = '5px';
+    messageDiv.style.fontFamily = 'Arial, sans-serif';
+    messageDiv.style.zIndex = '1000';
+    messageDiv.style.cursor = 'pointer';
+    messageDiv.textContent = 'Click here or press M to start engine sound';
+    
+    // Add click handler to start audio
+    messageDiv.addEventListener('click', startAudio);
+    
+    // Add to document
+    document.body.appendChild(messageDiv);
+}
+
+// Function to start audio after user interaction
+function startAudio() {
+    if (audioLoaded && audioContext && audioContext.state !== 'running') {
+        // Resume the audio context
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+            
+            // Play the engine sound if it's not already playing
+            if (!engineSound.isPlaying) {
+                engineSound.play();
+            }
+            
+            // Remove the message if it exists
+            const messageDiv = document.getElementById('audio-message');
+            if (messageDiv) {
+                messageDiv.style.display = 'none';
+            }
+        });
+    } else if (audioLoaded && !engineSound.isPlaying) {
+        // If context is already running but sound isn't playing
+        engineSound.play();
+        
+        // Remove the message if it exists
+        const messageDiv = document.getElementById('audio-message');
+        if (messageDiv) {
+            messageDiv.style.display = 'none';
+        }
+    }
+}
+
+// Update engine sound based on vehicle speed
+function updateEngineSound() {
+    if (!audioLoaded || !engineSound) return;
+    
+    // Calculate engine sound playback rate based on speed
+    // Idle sound at 0.5x speed, max sound at 2.0x speed
+    const minRate = 0.5;  // Idle engine sound
+    const maxRate = 2.0;  // Maximum revving sound
+    
+    // Calculate target playback rate based on speed percentage
+    const speedPercentage = Math.abs(vehicleControls.speed) / vehicleControls.maxSpeed;
+    const targetRate = minRate + (speedPercentage * (maxRate - minRate));
+    
+    // Apply the playback rate with a little smoothing
+    const currentRate = engineSound.playbackRate;
+    const newRate = currentRate + (targetRate - currentRate) * 0.1;
+    engineSound.setPlaybackRate(newRate);
+}
+
 // Initialize the camera
 const camera = new THREE.PerspectiveCamera(
     75, // Field of view
@@ -426,6 +543,9 @@ function updateVehicleMovement(deltaTime) {
         wheel.rotation.x += wheelRotationAmount;
     });
     
+    // Update engine sound based on speed
+    updateEngineSound();
+    
     // Update the third-person camera
     updateThirdPersonCamera();
 }
@@ -496,12 +616,39 @@ thirdPersonCamera.lastVehiclePos.copy(vehicle.group.position);
 // Set up vehicle controls
 setupVehicleControls();
 
+// Set up audio
+setupAudio();
+
 // Handle window resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+});
+
+// Add a key control to toggle sound
+window.addEventListener('keydown', (event) => {
+    if (event.key === 'm' || event.key === 'M') {
+        if (!audioLoaded) return;
+        
+        // Start audio if not running
+        if (audioContext && audioContext.state !== 'running') {
+            startAudio();
+        }
+        // Toggle sound if already running
+        else if (engineSound.isPlaying) {
+            engineSound.pause();
+        } else {
+            engineSound.play();
+        }
+        
+        // Remove the message if it exists
+        const messageDiv = document.getElementById('audio-message');
+        if (messageDiv) {
+            messageDiv.style.display = 'none';
+        }
+    }
 });
 
 // Track time for animation
