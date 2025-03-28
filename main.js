@@ -180,15 +180,29 @@ function createVehicle() {
     const windowMaterial = new THREE.MeshStandardMaterial({
         color: 0x88CCFF, // Light blue
         metalness: 0.9,
-        roughness: 0.1
+        roughness: 0.1,
+        transparent: true,  // Make window transparent
+        opacity: 0.7,       // Slightly transparent
+        depthWrite: false   // Helps prevent z-fighting
     });
     
-    // Front window
-    const frontWindowGeometry = new THREE.BoxGeometry(1.8, 0.6, 0.1);
+    // Front window - adjusted position and size to prevent z-fighting
+    const frontWindowGeometry = new THREE.BoxGeometry(1.7, 0.55, 0.05); // Slightly smaller than cabin
     const frontWindow = new THREE.Mesh(frontWindowGeometry, windowMaterial);
     frontWindow.position.y = 1.9;
-    frontWindow.position.z = -1.5;
+    frontWindow.position.z = -1.55; // Moved slightly forward from cabin front
     vehicle.add(frontWindow);
+    
+    // Add side windows for better appearance and to reduce the perception of any remaining z-fighting
+    const leftWindowGeometry = new THREE.BoxGeometry(0.05, 0.55, 1.3);
+    const leftWindow = new THREE.Mesh(leftWindowGeometry, windowMaterial);
+    leftWindow.position.set(-0.99, 1.9, -0.8);
+    vehicle.add(leftWindow);
+    
+    const rightWindowGeometry = new THREE.BoxGeometry(0.05, 0.55, 1.3);
+    const rightWindow = new THREE.Mesh(rightWindowGeometry, windowMaterial);
+    rightWindow.position.set(0.99, 1.9, -0.8);
+    vehicle.add(rightWindow);
     
     // Create four wheels
     const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
