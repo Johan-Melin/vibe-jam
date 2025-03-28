@@ -1,0 +1,23 @@
+{
+  "name": "zombie-road-smash",
+  "version": "1.0.0",
+  "description": "A Three.js game where you destroy zombies with your vehicle",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npx serve"
+  },
+  "keywords": [
+    "game",
+    "threejs",
+    "zombies"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.161.0"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}
