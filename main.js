@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // Initialize the scene
 const scene = new THREE.Scene();
@@ -17,6 +16,21 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 5, 10);
 camera.lookAt(0, 0, 0);
+
+// Third-person camera configuration
+const thirdPersonCamera = {
+    distance: 8,           // Distance behind vehicle
+    height: 4,             // Height above vehicle
+    lookAtHeight: 1,       // Look at point above vehicle
+    damping: 0.1,          // Camera smoothing factor (lower = smoother)
+    rotationDamping: 0.2,  // Rotation smoothing factor
+    currentPosition: new THREE.Vector3(), // Current interpolated position
+    targetPosition: new THREE.Vector3(),  // Target position to move toward
+    isActive: true,        // Is the third-person camera active
+    stiffness: 0.3,        // How quickly camera adjusts (higher = stiffer)
+    springiness: 0.9,      // How much the camera springs back (higher = bouncier)
+    lastVehiclePos: new THREE.Vector3()   // Last position for tracking vehicle motion
+};
 
 // Initialize the renderer
 const renderer = new THREE.WebGLRenderer({
@@ -259,9 +273,85 @@ const vehicleControls = {
     },
     position: new THREE.Vector3(0, 0, 0),
     rotation: 0,
-    // Track vehicle's forward direction vector for camera follow
+    // Track vehicle's forward direction vector
     direction: new THREE.Vector3(0, 0, -1)
 };
+
+// Update third-person camera position and rotation to follow vehicle
+function updateThirdPersonCamera() {
+    if (!thirdPersonCamera.isActive) return;
+    
+    const vehiclePos = vehicle.group.position;
+    const vehicleRotation = vehicleControls.rotation;
+    
+    // Calculate ideal position behind vehicle (Carmageddon 2 style)
+    // This creates the classic "chase cam" effect that's higher and further back
+    const idealDistance = thirdPersonCamera.distance + (Math.abs(vehicleControls.speed) * 3); // Increase distance with speed
+    
+    // Calculate velocity to add "momentum" to the camera
+    const vehicleVelocity = new THREE.Vector3().subVectors(vehiclePos, thirdPersonCamera.lastVehiclePos);
+    thirdPersonCamera.lastVehiclePos.copy(vehiclePos);
+    
+    // Calculate ideal position behind vehicle (with momentum)
+    const rotationOffset = -vehicleRotation; // Negative because we want to be behind
+    const idealX = vehiclePos.x - (Math.sin(rotationOffset) * idealDistance);
+    const idealZ = vehiclePos.z - (Math.cos(rotationOffset) * idealDistance);
+    
+    // Set target position (higher when going faster for better visibility)
+    const heightBoost = Math.abs(vehicleControls.speed) * 5; // Higher camera at speed
+    
+    thirdPersonCamera.targetPosition.set(
+        idealX, 
+        vehiclePos.y + thirdPersonCamera.height + heightBoost,
+        idealZ
+    );
+    
+    // Apply velocity-based effects (camera lags behind during fast turns)
+    thirdPersonCamera.targetPosition.x -= vehicleVelocity.x * 2;
+    thirdPersonCamera.targetPosition.z -= vehicleVelocity.z * 2;
+    
+    // Camera needs to smoothly move toward target position (Carmageddon style spring physics)
+    if (!thirdPersonCamera.currentPosition.x) {
+        // First time initialization
+        thirdPersonCamera.currentPosition.copy(thirdPersonCamera.targetPosition);
+    } else {
+        // Calculate spring force
+        const displacement = new THREE.Vector3().subVectors(
+            thirdPersonCamera.targetPosition,
+            thirdPersonCamera.currentPosition
+        );
+        
+        // Apply spring physics
+        const springForce = displacement.multiplyScalar(thirdPersonCamera.stiffness);
+        
+        // Move camera with spring force
+        thirdPersonCamera.currentPosition.add(springForce);
+    }
+    
+    // Set camera position
+    camera.position.copy(thirdPersonCamera.currentPosition);
+    
+    // Look at vehicle with slight offset
+    const lookAtPos = new THREE.Vector3(
+        vehiclePos.x,
+        vehiclePos.y + thirdPersonCamera.lookAtHeight,
+        vehiclePos.z
+    );
+    
+    // Look ahead of vehicle when at speed (Carmageddon 2 style)
+    if (Math.abs(vehicleControls.speed) > 0.1) {
+        // Look ahead more when going faster
+        const lookAheadDistance = vehicleControls.speed * 6;
+        lookAtPos.x += Math.sin(vehicleRotation) * lookAheadDistance;
+        lookAtPos.z += Math.cos(vehicleRotation) * lookAheadDistance;
+    }
+    
+    camera.lookAt(lookAtPos);
+    
+    // Add a slight tilt to the camera based on speed (Carmageddon 2 style)
+    const tiltAmount = vehicleControls.speed * 0.1;
+    camera.rotation.z = -tiltAmount; // Tilt into turns
+}
 
 // Function to update vehicle position and rotation based on controls
 function updateVehicleMovement(deltaTime) {
@@ -325,7 +415,7 @@ function updateVehicleMovement(deltaTime) {
     // Update vehicle rotation
     vehicle.group.rotation.y = controls.rotation;
     
-    // Update the direction vector for camera follow
+    // Update the direction vector
     controls.direction.set(
         Math.sin(controls.rotation),
         0,
@@ -338,30 +428,8 @@ function updateVehicleMovement(deltaTime) {
         wheel.rotation.x += wheelRotationAmount;
     });
     
-    // Update follow camera position if active
-    if (currentCameraState === 'follow') {
-        updateFollowCamera();
-    }
-}
-
-// Function to update the follow camera position based on vehicle
-function updateFollowCamera() {
-    // Get vehicle position and rotation
-    const vehiclePosition = vehicle.group.position.clone();
-    const vehicleDirection = vehicleControls.direction.clone().multiplyScalar(-1); // Behind vehicle
-    
-    // Position camera behind vehicle
-    const cameraOffset = new THREE.Vector3(
-        vehicleDirection.x * 6, // Distance behind
-        3, // Height
-        vehicleDirection.z * 6 // Distance behind
-    );
-    
-    // Set camera position and target
-    camera.position.copy(vehiclePosition.clone().add(cameraOffset));
-    camera.lookAt(
-        vehiclePosition.clone().add(new THREE.Vector3(0, 1, 0)) // Look at vehicle, slightly above ground
-    );
+    // Update the third-person camera
+    updateThirdPersonCamera();
 }
 
 // Set up key controls for vehicle
@@ -382,6 +450,14 @@ function setupVehicleControls() {
                 break;
             case ' ': // Space bar for brakes
                 vehicleControls.keys.brake = true;
+                break;
+            case 'c': // Toggle camera mode
+                thirdPersonCamera.isActive = !thirdPersonCamera.isActive;
+                if (!thirdPersonCamera.isActive) {
+                    // Reset camera to default position when disabling third-person view
+                    camera.position.set(0, 5, 10);
+                    camera.lookAt(0, 0, 0);
+                }
                 break;
         }
     });
@@ -416,79 +492,11 @@ const ground = createGroundPlane();
 // Create the vehicle
 const vehicle = createVehicle();
 
+// Initialize third-person camera's last vehicle position
+thirdPersonCamera.lastVehiclePos.copy(vehicle.group.position);
+
 // Set up vehicle controls
 setupVehicleControls();
-
-// Add camera controls
-const orbitControls = new OrbitControls(camera, renderer.domElement);
-orbitControls.enableDamping = true; // Add smooth damping effect
-orbitControls.dampingFactor = 0.05;
-orbitControls.minDistance = 5;
-orbitControls.maxDistance = 50;
-orbitControls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
-orbitControls.screenSpacePanning = false; // Use orbit instead of panning when shifting
-
-// Update camera states to focus on the vehicle
-const cameraStates = {
-    orbit: {
-        position: new THREE.Vector3(0, 5, 10),
-        target: new THREE.Vector3(0, 1, 0), // Focus on vehicle
-        enabled: true
-    },
-    top: {
-        position: new THREE.Vector3(0, 20, 0),
-        target: new THREE.Vector3(0, 0, 0),
-        enabled: false
-    },
-    follow: {
-        position: new THREE.Vector3(0, 3, 5), // Behind vehicle
-        target: new THREE.Vector3(0, 1, 0), // Focus on vehicle
-        enabled: false
-    }
-};
-
-let currentCameraState = 'orbit';
-
-// Function to switch camera state
-function switchCameraState(stateName) {
-    if (!cameraStates[stateName]) return;
-    
-    const state = cameraStates[stateName];
-    
-    // Transition camera position and target
-    const targetPosition = state.position.clone();
-    const targetLookAt = state.target.clone();
-    
-    // Set camera properties
-    camera.position.copy(targetPosition);
-    orbitControls.target.copy(targetLookAt);
-    orbitControls.enabled = state.enabled;
-    
-    // Update orbit controls
-    orbitControls.update();
-    
-    currentCameraState = stateName;
-    
-    // If switching to follow camera, update its position immediately
-    if (stateName === 'follow') {
-        updateFollowCamera();
-    }
-}
-
-// Add keyboard controls for camera states
-window.addEventListener('keydown', (event) => {
-    switch(event.key) {
-        case '1': // Orbit view
-            switchCameraState('orbit');
-            break;
-        case '2': // Top-down view
-            switchCameraState('top');
-            break;
-        case '3': // Follow view
-            switchCameraState('follow');
-            break;
-    }
-});
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -511,9 +519,6 @@ function animate(time) {
     
     // Update vehicle movement
     updateVehicleMovement(deltaTime);
-    
-    // Update orbit controls (if enabled)
-    orbitControls.update();
     
     // Render the scene
     renderer.render(scene, camera);
