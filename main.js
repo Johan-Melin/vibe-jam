@@ -285,72 +285,58 @@ function updateThirdPersonCamera() {
     const vehicleRotation = vehicleControls.rotation;
     
     // Calculate ideal position behind vehicle (Carmageddon 2 style)
-    // This creates the classic "chase cam" effect that's higher and further back
-    const idealDistance = thirdPersonCamera.distance + (Math.abs(vehicleControls.speed) * 3); // Increase distance with speed
+    // Always position camera directly behind the vehicle based on vehicle's rotation
+    const idealDistance = thirdPersonCamera.distance + (Math.abs(vehicleControls.speed) * 2); 
     
-    // Calculate velocity to add "momentum" to the camera
-    const vehicleVelocity = new THREE.Vector3().subVectors(vehiclePos, thirdPersonCamera.lastVehiclePos);
-    thirdPersonCamera.lastVehiclePos.copy(vehiclePos);
+    // Calculate the camera position directly behind the vehicle based on its rotation
+    // Using negative sin/cos to position camera behind the vehicle
+    const idealX = vehiclePos.x - Math.sin(vehicleRotation) * idealDistance;
+    const idealZ = vehiclePos.z - Math.cos(vehicleRotation) * idealDistance;
     
-    // Calculate ideal position behind vehicle (with momentum)
-    const rotationOffset = -vehicleRotation; // Negative because we want to be behind
-    const idealX = vehiclePos.x - (Math.sin(rotationOffset) * idealDistance);
-    const idealZ = vehiclePos.z - (Math.cos(rotationOffset) * idealDistance);
+    // Set target position with height based on speed (higher when faster)
+    const heightBoost = Math.abs(vehicleControls.speed) * 3; 
+    const idealHeight = vehiclePos.y + thirdPersonCamera.height + heightBoost;
     
-    // Set target position (higher when going faster for better visibility)
-    const heightBoost = Math.abs(vehicleControls.speed) * 5; // Higher camera at speed
-    
-    thirdPersonCamera.targetPosition.set(
-        idealX, 
-        vehiclePos.y + thirdPersonCamera.height + heightBoost,
-        idealZ
-    );
-    
-    // Apply velocity-based effects (camera lags behind during fast turns)
-    thirdPersonCamera.targetPosition.x -= vehicleVelocity.x * 2;
-    thirdPersonCamera.targetPosition.z -= vehicleVelocity.z * 2;
-    
-    // Camera needs to smoothly move toward target position (Carmageddon style spring physics)
+    // Smoothly approach target position with damping (no sudden snapping)
     if (!thirdPersonCamera.currentPosition.x) {
         // First time initialization
-        thirdPersonCamera.currentPosition.copy(thirdPersonCamera.targetPosition);
+        thirdPersonCamera.currentPosition.set(idealX, idealHeight, idealZ);
     } else {
-        // Calculate spring force
-        const displacement = new THREE.Vector3().subVectors(
-            thirdPersonCamera.targetPosition,
-            thirdPersonCamera.currentPosition
-        );
+        // Apply smooth damping to camera position
+        const damping = thirdPersonCamera.damping;
         
-        // Apply spring physics
-        const springForce = displacement.multiplyScalar(thirdPersonCamera.stiffness);
-        
-        // Move camera with spring force
-        thirdPersonCamera.currentPosition.add(springForce);
+        thirdPersonCamera.currentPosition.x += (idealX - thirdPersonCamera.currentPosition.x) * damping;
+        thirdPersonCamera.currentPosition.y += (idealHeight - thirdPersonCamera.currentPosition.y) * damping;
+        thirdPersonCamera.currentPosition.z += (idealZ - thirdPersonCamera.currentPosition.z) * damping;
     }
     
-    // Set camera position
+    // Update camera position
     camera.position.copy(thirdPersonCamera.currentPosition);
     
-    // Look at vehicle with slight offset
+    // Calculate look-at point - slightly ahead of vehicle based on its rotation
+    const lookAheadDistance = vehicleControls.speed * 4; // Look ahead more at higher speeds
     const lookAtPos = new THREE.Vector3(
-        vehiclePos.x,
+        vehiclePos.x + Math.sin(vehicleRotation) * lookAheadDistance,
         vehiclePos.y + thirdPersonCamera.lookAtHeight,
-        vehiclePos.z
+        vehiclePos.z + Math.cos(vehicleRotation) * lookAheadDistance
     );
     
-    // Look ahead of vehicle when at speed (Carmageddon 2 style)
-    if (Math.abs(vehicleControls.speed) > 0.1) {
-        // Look ahead more when going faster
-        const lookAheadDistance = vehicleControls.speed * 6;
-        lookAtPos.x += Math.sin(vehicleRotation) * lookAheadDistance;
-        lookAtPos.z += Math.cos(vehicleRotation) * lookAheadDistance;
-    }
+    // Always maintain world up vector
+    camera.up.set(0, 1, 0);
     
+    // Smoothly look at the target
     camera.lookAt(lookAtPos);
     
-    // Add a slight tilt to the camera based on speed (Carmageddon 2 style)
-    const tiltAmount = vehicleControls.speed * 0.1;
-    camera.rotation.z = -tiltAmount; // Tilt into turns
+    // Apply a subtle bank effect during turns but limit it to prevent disorientation
+    if (vehicleControls.keys.left && Math.abs(vehicleControls.speed) > 0.05) {
+        // Banking into left turns (limited tilt)
+        const bankAmount = Math.min(0.05, Math.abs(vehicleControls.speed) * 0.1);
+        camera.rotateZ(bankAmount);
+    } else if (vehicleControls.keys.right && Math.abs(vehicleControls.speed) > 0.05) {
+        // Banking into right turns (limited tilt)
+        const bankAmount = Math.min(0.05, Math.abs(vehicleControls.speed) * 0.1);
+        camera.rotateZ(-bankAmount);
+    }
 }
 
 // Function to update vehicle position and rotation based on controls
