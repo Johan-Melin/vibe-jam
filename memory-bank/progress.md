@@ -88,3 +88,20 @@
   - Exponential fog that matches the sky color
   - Enhances depth perception in the 3D environment
   - Creates atmospheric distance effect
+
+## Step 7: Vehicle Model - Completed
+- Created a simple vehicle model using basic Three.js geometries:
+  - Main body of the truck with red material
+  - Cabin/driver compartment with light gray material
+  - Four wheels using cylinder geometry
+  - Front window with blue glass-like material
+  - Bull bar/front guard for zombie smashing
+- Organized vehicle components logically:
+  - Used THREE.Group to contain all vehicle parts
+  - Properly positioned components relative to each other
+  - Structured for future animation and movement
+- Implemented shadow casting and receiving for all vehicle parts
+- Added basic wheel animation to demonstrate rotation
+- Replaced placeholder cube with the new vehicle model
+- Updated camera positions and targets to focus on the vehicle
+- Created a modular createVehicle() function for future expandability

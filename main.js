@@ -141,24 +141,113 @@ function addTerrainVariations(ground) {
     ground.geometry.computeVertexNormals();
 }
 
+// Function to create a simple vehicle model
+function createVehicle() {
+    // Create a group to hold all vehicle parts
+    const vehicle = new THREE.Group();
+    
+    // Create the main body of the vehicle (truck)
+    const bodyGeometry = new THREE.BoxGeometry(2.5, 1.0, 4.0);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0xDD0000, // Red
+        metalness: 0.7,
+        roughness: 0.3
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 1.0; // Height from ground
+    body.castShadow = true;
+    body.receiveShadow = true;
+    vehicle.add(body);
+    
+    // Create a cabin for the vehicle
+    const cabinGeometry = new THREE.BoxGeometry(2.0, 0.8, 1.5);
+    const cabinMaterial = new THREE.MeshStandardMaterial({
+        color: 0xEEEEEE, // Light gray
+        metalness: 0.3,
+        roughness: 0.5
+    });
+    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+    cabin.position.y = 1.9; // On top of body
+    cabin.position.z = -0.8; // Toward the front of the vehicle
+    cabin.castShadow = true;
+    cabin.receiveShadow = true;
+    vehicle.add(cabin);
+    
+    // Add windows to the cabin
+    const windowMaterial = new THREE.MeshStandardMaterial({
+        color: 0x88CCFF, // Light blue
+        metalness: 0.9,
+        roughness: 0.1
+    });
+    
+    // Front window
+    const frontWindowGeometry = new THREE.BoxGeometry(1.8, 0.6, 0.1);
+    const frontWindow = new THREE.Mesh(frontWindowGeometry, windowMaterial);
+    frontWindow.position.y = 1.9;
+    frontWindow.position.z = -1.5;
+    vehicle.add(frontWindow);
+    
+    // Create four wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333, // Dark gray
+        metalness: 0.5,
+        roughness: 0.7
+    });
+    
+    // Position the wheels at the corners of the vehicle
+    const wheelPositions = [
+        { x: -1.2, y: 0.5, z: -1.3 }, // Front left
+        { x: 1.2, y: 0.5, z: -1.3 },  // Front right
+        { x: -1.2, y: 0.5, z: 1.3 },  // Rear left
+        { x: 1.2, y: 0.5, z: 1.3 }    // Rear right
+    ];
+    
+    const wheels = [];
+    wheelPositions.forEach(position => {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.position.set(position.x, position.y, position.z);
+        wheel.rotation.z = Math.PI / 2; // Rotate to align with vehicle
+        wheel.castShadow = true;
+        wheel.receiveShadow = true;
+        wheels.push(wheel);
+        vehicle.add(wheel);
+    });
+    
+    // Add bull bar / front guard
+    const bullBarGeometry = new THREE.BoxGeometry(2.6, 0.5, 0.2);
+    const bullBarMaterial = new THREE.MeshStandardMaterial({
+        color: 0x888888, // Silver
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const bullBar = new THREE.Mesh(bullBarGeometry, bullBarMaterial);
+    bullBar.position.y = 0.7;
+    bullBar.position.z = -2.1;
+    bullBar.castShadow = true;
+    bullBar.receiveShadow = true;
+    vehicle.add(bullBar);
+    
+    // Add the vehicle to the scene
+    scene.add(vehicle);
+    
+    // Store relevant vehicle parts for animation and movement
+    return {
+        group: vehicle,
+        body,
+        wheels,
+        cabin
+    };
+}
+
 // Set up lighting
 const lights = setupLighting();
 
 // Create the ground
 const ground = createGroundPlane();
 
-// Add a test cube with proper material
-const geometry = new THREE.BoxGeometry(2, 2, 2);
-const material = new THREE.MeshStandardMaterial({ 
-    color: 0x00ff00,
-    metalness: 0.3,
-    roughness: 0.4
-});
-const cube = new THREE.Mesh(geometry, material);
-cube.castShadow = true;
-cube.receiveShadow = true;
-cube.position.y = 1; // Raise the cube so it sits on the ground
-scene.add(cube);
+// Create the vehicle
+const vehicle = createVehicle();
 
 // Add camera controls
 const orbitControls = new OrbitControls(camera, renderer.domElement);
@@ -169,11 +258,11 @@ orbitControls.maxDistance = 50;
 orbitControls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
 orbitControls.screenSpacePanning = false; // Use orbit instead of panning when shifting
 
-// Create a camera state manager for different views
+// Update camera states to focus on the vehicle
 const cameraStates = {
     orbit: {
         position: new THREE.Vector3(0, 5, 10),
-        target: new THREE.Vector3(0, 0, 0),
+        target: new THREE.Vector3(0, 1, 0), // Focus on vehicle
         enabled: true
     },
     top: {
@@ -182,8 +271,8 @@ const cameraStates = {
         enabled: false
     },
     follow: {
-        position: new THREE.Vector3(0, 3, -5),
-        target: new THREE.Vector3(0, 1, 0),
+        position: new THREE.Vector3(0, 3, 5), // Behind vehicle
+        target: new THREE.Vector3(0, 1, 0), // Focus on vehicle
         enabled: false
     }
 };
@@ -238,9 +327,12 @@ window.addEventListener('resize', () => {
 function animate() {
     requestAnimationFrame(animate);
     
-    // Rotate the cube to show animation is working
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
+    // Animate the vehicle wheels
+    if (vehicle && vehicle.wheels) {
+        vehicle.wheels.forEach(wheel => {
+            wheel.rotation.x += 0.01; // Rotate wheels
+        });
+    }
     
     // Update orbit controls (if enabled)
     orbitControls.update();

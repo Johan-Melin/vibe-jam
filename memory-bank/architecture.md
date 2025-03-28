@@ -35,6 +35,7 @@
 - `PerspectiveCamera` - Simulates human vision with a field of view
 - `WebGLRenderer` - Renders the scene using WebGL for hardware acceleration
 - `Mesh` - Combines geometry and materials to create visible 3D objects
+- `Group` - Container to organize multiple meshes as a single unit
 - `OrbitControls` - Enables interactive camera controls with mouse/touch
 - `AmbientLight` - Provides uniform illumination to all objects
 - `DirectionalLight` - Simulates sunlight with parallel light rays and shadows
@@ -43,6 +44,7 @@
 - `FogExp2` - Creates exponential fog effect for depth perception
 - `PlaneGeometry` - Creates flat rectangular surfaces (used for the ground)
 - `BoxGeometry` - Creates cubic or rectangular prism shapes
+- `CylinderGeometry` - Creates cylinder shapes (used for wheels)
 - `MeshStandardMaterial` - Physically-based material with properties like roughness and metalness
 - `GridHelper` - Visual representation of a grid to help with spatial awareness
 
@@ -53,7 +55,11 @@
   - Procedurally modified vertices for natural-looking landscape
   - Grid overlay for improved spatial reference
   - Edge flattening for playable boundaries
-- Test cube - Basic 3D object with shadow casting for testing
+- Vehicle model:
+  - Composed of multiple parts (body, cabin, wheels, bull bar)
+  - Realistic materials with appropriate metalness and roughness
+  - Animated wheels for visual feedback
+  - Structured for future input-based movement
 - Camera system - Multiple camera views with state management:
   - Orbit view for development and free exploration
   - Top-down view for strategic overview
@@ -84,12 +90,18 @@
   - Shadow optimization with camera frustum settings
   - Color temperatures tuned for outdoor environment
 
+- Vehicle management:
+  - Modular createVehicle() function
+  - Hierarchical structure with parent-child relationships
+  - Organized component references for animation and control
+  - Shadow-casting configuration for all components
+
 ### Future Architecture Considerations
 
 As development progresses, the project will likely expand to include:
 
-- Dedicated modules for game entities (vehicle, zombies)
-- Physics and collision systems
-- Input handling
-- Game state management
+- Vehicle movement controls
+- Physics and collision detection
+- Zombie entities and behavior
+- Game scoring and progression system
 - Asset loading and management
