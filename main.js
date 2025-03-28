@@ -46,48 +46,37 @@ function setupLighting() {
     scene.children = scene.children.filter(child => !(child instanceof THREE.Light));
     
     // Ambient light for base illumination (slightly blue for sky color)
-    const ambientLight = new THREE.AmbientLight(0xccddff, 0.4);
+    const ambientLight = new THREE.AmbientLight(0xccddff, 0.6);
     scene.add(ambientLight);
     
-    // Main directional light (sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffaa, 1);
-    directionalLight.position.set(5, 10, 7.5);
-    directionalLight.castShadow = true;
-    
-    // Enhance shadow quality
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 50;
-    directionalLight.shadow.camera.left = -20;
-    directionalLight.shadow.camera.right = 20;
-    directionalLight.shadow.camera.top = 20;
-    directionalLight.shadow.camera.bottom = -20;
-    directionalLight.shadow.bias = -0.001;
-    
-    scene.add(directionalLight);
-    
     // Add a hemisphere light for more realistic outdoor lighting
-    const hemisphereLight = new THREE.HemisphereLight(0x0088ff, 0x44aa00, 0.6);
+    const hemisphereLight = new THREE.HemisphereLight(0x0088ff, 0x44aa00, 0.8);
     scene.add(hemisphereLight);
     
     // Add a subtle point light near the player's starting position for emphasis
-    const pointLight = new THREE.PointLight(0xffffee, 0.8, 20);
-    pointLight.position.set(0, 2, 0);
+    const pointLight = new THREE.PointLight(0xffffee, 1.0, 50);
+    pointLight.position.set(0, 15, 0);
     pointLight.castShadow = true;
-    pointLight.shadow.mapSize.width = 512;
-    pointLight.shadow.mapSize.height = 512;
+    pointLight.shadow.mapSize.width = 1024;
+    pointLight.shadow.mapSize.height = 1024;
     scene.add(pointLight);
     
-    // Debug helper for directional light (commented out for production)
-    // const dirLightHelper = new THREE.DirectionalLightHelper(directionalLight, 5);
-    // scene.add(dirLightHelper);
+    // Add an additional point light that will follow the vehicle
+    const vehicleLight = new THREE.PointLight(0xffffdd, 1.0, 30);
+    vehicleLight.position.set(0, 5, 0);
+    vehicleLight.castShadow = true;
+    vehicleLight.shadow.mapSize.width = 1024;
+    vehicleLight.shadow.mapSize.height = 1024;
+    scene.add(vehicleLight);
+    
+    // Store the vehicle light so we can update its position
+    scene.vehicleLight = vehicleLight;
     
     return {
         ambientLight,
-        directionalLight,
         hemisphereLight,
-        pointLight
+        pointLight,
+        vehicleLight
     };
 }
 
@@ -397,6 +386,15 @@ function updateVehicleMovement(deltaTime) {
     
     // Update vehicle position
     vehicle.group.position.add(velocity);
+    
+    // Update vehicle light to follow the vehicle
+    if (scene.vehicleLight) {
+        scene.vehicleLight.position.set(
+            vehicle.group.position.x,
+            vehicle.group.position.y + 5, // Height above vehicle
+            vehicle.group.position.z
+        );
+    }
     
     // Update vehicle rotation
     vehicle.group.rotation.y = controls.rotation;
