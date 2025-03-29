@@ -1,7 +1,7 @@
 {
-  "name": "zombie-road-smash",
+  "name": "rhythm-road",
   "version": "1.0.0",
-  "description": "A Three.js game where you destroy zombies with your vehicle",
+  "description": "A Three.js rhythm game where you navigate a vehicle to the beat of the music",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -10,7 +10,8 @@
   "keywords": [
     "game",
     "threejs",
-    "zombies"
+    "rhythm",
+    "music"
   ],
   "author": "",
   "license": "ISC",
