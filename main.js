@@ -2,10 +2,10 @@ import * as THREE from 'three';
 
 // Initialize the scene
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+scene.background = new THREE.Color(0x000011); // Dark blue-black background for neon contrast
 
 // Add fog to the scene for atmosphere and depth
-scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
+scene.fog = new THREE.FogExp2(0x000022, 0.008); // Darker, denser fog for neon glow effect
 
 // Set up audio for the engine sound and background music
 let engineSound;
@@ -15,6 +15,33 @@ let audioLoaded = false;
 let musicLoaded = false;  // Add a specific flag for music loaded state
 let audioContext;
 let musicPlaying = false;
+let audioAnalyzer;  // Analyzer for visualizing the music
+let analyzerData;   // Data from the analyzer
+
+// Track time for animation
+let previousTime = 0;
+
+// Rhythm game system
+const rhythmGame = {
+    enabled: true,
+    lanes: 3,
+    laneWidth: 3,
+    spawnDistance: 100, // Increased from 50 to 100 for more travel time
+    despawnDistance: -15, // Negative value means behind the vehicle
+    cubeSpeed: 0.02, // Reduced from 0.2 to 0.02 (10x slower)
+    nextBeatTime: 0,
+    beatInterval: 500, // in milliseconds, will be adjusted based on BPM
+    cubePool: [],
+    activeCubes: [],
+    poolSize: 30,
+    lastBeatTime: 0,
+    beatDetectionThreshold: 0.6,
+    beatDetectionFrequencyRange: [2, 8], // Indices in the frequency data to check for beats
+    bpm: 130,
+    beatsAhead: 16, // Increased from 8 to 16 for smoother movement
+    lanePositions: [], // Will store the world positions of the lanes
+    passPoint: 0 // Point where cube passes the vehicle (0 = at vehicle position)
+};
 
 // Initialize audio system but don't play yet
 function setupAudio() {
@@ -72,6 +99,9 @@ function setupAudio() {
         backgroundMusic.setVolume(0.7);
         musicLoaded = true;  // Set the music loaded flag
         console.log('Background music loaded successfully');
+        
+        // Set up audio analyzer once music is loaded
+        setupAudioAnalyzer();
         
         updateLoadingStatus('music', 'complete');
         
@@ -417,29 +447,29 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Performance optimization
 
-// Enhanced lighting setup
+// Enhanced lighting setup for neon aesthetics
 function setupLighting() {
     // Clear any existing lights from the scene
     scene.children = scene.children.filter(child => !(child instanceof THREE.Light));
     
-    // Ambient light for base illumination (slightly blue for sky color)
-    const ambientLight = new THREE.AmbientLight(0xccddff, 0.6);
+    // Ambient light (very low for contrast)
+    const ambientLight = new THREE.AmbientLight(0x111122, 0.3);
     scene.add(ambientLight);
     
-    // Add a hemisphere light for more realistic outdoor lighting
-    const hemisphereLight = new THREE.HemisphereLight(0x0088ff, 0x44aa00, 0.8);
+    // Add a dim bluish hemisphere light
+    const hemisphereLight = new THREE.HemisphereLight(0x0033ff, 0xff00ff, 0.3);
     scene.add(hemisphereLight);
     
-    // Add a subtle point light near the player's starting position for emphasis
-    const pointLight = new THREE.PointLight(0xffffee, 1.0, 50);
+    // Add central point light with neon purple color
+    const pointLight = new THREE.PointLight(0xff00ff, 1.0, 50);
     pointLight.position.set(0, 15, 0);
     pointLight.castShadow = true;
     pointLight.shadow.mapSize.width = 1024;
     pointLight.shadow.mapSize.height = 1024;
     scene.add(pointLight);
     
-    // Add an additional point light that will follow the vehicle
-    const vehicleLight = new THREE.PointLight(0xffffdd, 1.0, 30);
+    // Add a cyan light that follows the vehicle
+    const vehicleLight = new THREE.PointLight(0x00ffff, 1.5, 30);
     vehicleLight.position.set(0, 5, 0);
     vehicleLight.castShadow = true;
     vehicleLight.shadow.mapSize.width = 1024;
@@ -449,11 +479,29 @@ function setupLighting() {
     // Store the vehicle light so we can update its position
     scene.vehicleLight = vehicleLight;
     
+    // Add neon floor lighting
+    const floorLight1 = new THREE.PointLight(0xff00aa, 1.0, 20);
+    floorLight1.position.set(20, 0.5, 20);
+    scene.add(floorLight1);
+    
+    const floorLight2 = new THREE.PointLight(0x00ffaa, 1.0, 20);
+    floorLight2.position.set(-20, 0.5, -20);
+    scene.add(floorLight2);
+    
+    const floorLight3 = new THREE.PointLight(0x0088ff, 1.0, 20);
+    floorLight3.position.set(-20, 0.5, 20);
+    scene.add(floorLight3);
+    
+    const floorLight4 = new THREE.PointLight(0xaa00ff, 1.0, 20);
+    floorLight4.position.set(20, 0.5, -20);
+    scene.add(floorLight4);
+    
     return {
         ambientLight,
         hemisphereLight,
         pointLight,
-        vehicleLight
+        vehicleLight,
+        floorLights: [floorLight1, floorLight2, floorLight3, floorLight4]
     };
 }
 
@@ -461,21 +509,17 @@ function setupLighting() {
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-// Create enhanced ground
+// Create enhanced ground with neon grid
 function createGroundPlane() {
-    // Create grid texture procedurally
-    const gridSize = 1000;
-    const gridDivisions = 100;
-    const gridTexture = new THREE.TextureLoader().load('');
-    
     // Create ground with size of 200x200 for larger play area
-    const groundGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
+    const groundGeometry = new THREE.PlaneGeometry(200, 200, 100, 100);
     
-    // Custom shader material for the ground
+    // Custom shader material for the ground - dark with neon grid
     const groundMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x48763C, // Green for grass
-        roughness: 0.8,
-        metalness: 0.2,
+        color: 0x000000, // Black base
+        roughness: 0.7,
+        metalness: 0.5,
+        emissive: 0x000011, // Very slight blue emissive glow
     });
     
     // Create the ground mesh
@@ -484,35 +528,72 @@ function createGroundPlane() {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Add grid helper for better visual reference
-    const gridHelper = new THREE.GridHelper(200, 50, 0x000000, 0x000000);
-    gridHelper.position.y = 0.01; // Slightly above ground to prevent z-fighting
-    gridHelper.material.opacity = 0.2;
+    // Add neon grid helper for cyberpunk style
+    const gridHelper = new THREE.GridHelper(200, 40, 0x00ffff, 0xff00ff);
+    gridHelper.position.y = 0.02; // Slightly above ground to prevent z-fighting
+    gridHelper.material.opacity = 0.5;
     gridHelper.material.transparent = true;
+    
+    // Make grid lines glow
+    if (gridHelper.material instanceof THREE.Material) {
+        gridHelper.material.emissive = new THREE.Color(0xffffff);
+        gridHelper.material.emissiveIntensity = 1.0;
+    } else if (Array.isArray(gridHelper.material)) {
+        gridHelper.material.forEach(mat => {
+            mat.emissive = new THREE.Color(0xffffff);
+            mat.emissiveIntensity = 1.0;
+        });
+    }
     scene.add(gridHelper);
-
+    
+    // Add second grid for cross-hatch effect
+    const secondGrid = new THREE.GridHelper(200, 40, 0xff00aa, 0x00ffaa);
+    secondGrid.position.y = 0.01;
+    secondGrid.rotation.y = Math.PI / 4; // Rotate 45 degrees
+    secondGrid.material.opacity = 0.3;
+    secondGrid.material.transparent = true;
+    scene.add(secondGrid);
+    
     // Add some simple terrain variations
     addTerrainVariations(ground);
+    
+    // Add neon lines along the x and z axes for additional cyberpunk effect
+    addNeonAxisLines();
     
     return ground;
 }
 
-// Add simple terrain variations
+// Function to add subtle terrain variations to the ground
 function addTerrainVariations(ground) {
-    // Create some random bumps and hills
-    const vertices = ground.geometry.attributes.position.array;
-    for (let i = 0; i < vertices.length; i += 3) {
-        // Only modify y values (height)
-        if (i % 3 === 1) {
-            // Skip edges to keep a flat border
-            const xPos = vertices[i - 1];
-            const zPos = vertices[i + 1];
-            const distFromCenter = Math.sqrt(xPos * xPos + zPos * zPos);
+    // For a flat neon grid aesthetic, we'll keep terrain variations very minimal
+    // Just add a few subtle bumps for visual interest, but keep it mostly flat
+    
+    if (!ground.geometry.attributes || !ground.geometry.attributes.position) {
+        console.warn("Cannot add terrain variations - ground geometry is not compatible");
+        return;
+    }
+    
+    // Get position attribute to modify vertices
+    const positions = ground.geometry.attributes.position.array;
+    
+    // Add subtle random variations
+    for (let i = 0; i < positions.length; i += 3) {
+        // Only modify y-values (which is height in our rotated plane)
+        // Skip edge vertices to keep the border flat
+        const x = positions[i];
+        const z = positions[i + 2];
+        
+        // Calculate distance from center
+        const distanceFromCenter = Math.sqrt(x * x + z * z);
+        
+        // Only modify interior vertices to avoid edge issues
+        if (distanceFromCenter < 80) {
+            // Create very subtle height variations
+            // Use noise pattern that looks cyberpunk/grid-like
+            const noiseValue = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.1;
             
-            if (distFromCenter < 90) { // Keep borders flat
-                // Create gentle, random terrain bumps
-                vertices[i] = Math.sin(xPos / 10) * Math.cos(zPos / 10) * 0.5;
-            }
+            // Apply the height variation
+            positions[i + 1] = noiseValue;
         }
     }
     
@@ -521,7 +602,42 @@ function addTerrainVariations(ground) {
     ground.geometry.computeVertexNormals();
 }
 
-// Function to create a simple vehicle model
+// Add neon lines along the axes
+function addNeonAxisLines() {
+    // X axis - magenta
+    const xGeometry = new THREE.BufferGeometry();
+    const xPoints = [
+        new THREE.Vector3(-100, 0.1, 0),
+        new THREE.Vector3(100, 0.1, 0)
+    ];
+    xGeometry.setFromPoints(xPoints);
+    const xMaterial = new THREE.LineBasicMaterial({
+        color: 0xff00ff,
+        linewidth: 3,
+        emissive: 0xff00ff,
+        emissiveIntensity: 1.0
+    });
+    const xLine = new THREE.Line(xGeometry, xMaterial);
+    scene.add(xLine);
+    
+    // Z axis - cyan
+    const zGeometry = new THREE.BufferGeometry();
+    const zPoints = [
+        new THREE.Vector3(0, 0.1, -100),
+        new THREE.Vector3(0, 0.1, 100)
+    ];
+    zGeometry.setFromPoints(zPoints);
+    const zMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ffff,
+        linewidth: 3,
+        emissive: 0x00ffff,
+        emissiveIntensity: 1.0
+    });
+    const zLine = new THREE.Line(zGeometry, zMaterial);
+    scene.add(zLine);
+}
+
+// Function to create a neon vehicle model
 function createVehicle() {
     // Create a group to hold all vehicle parts
     const vehicle = new THREE.Group();
@@ -529,9 +645,11 @@ function createVehicle() {
     // Create the main body of the vehicle (truck)
     const bodyGeometry = new THREE.BoxGeometry(2.5, 1.0, 4.0);
     const bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0xDD0000, // Red
-        metalness: 0.7,
-        roughness: 0.3
+        color: 0x000000, // Black base
+        metalness: 0.9,
+        roughness: 0.2,
+        emissive: 0x0088ff, // Blue neon glow
+        emissiveIntensity: 0.8
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 1.0; // Height from ground
@@ -539,12 +657,26 @@ function createVehicle() {
     body.receiveShadow = true;
     vehicle.add(body);
     
+    // Add neon trim to the body
+    const edgeGeometry = new THREE.EdgesGeometry(bodyGeometry);
+    const edgeMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ffff, // Cyan neon
+        emissive: 0x00ffff,
+        emissiveIntensity: 1.0,
+        linewidth: 3
+    });
+    const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    edges.position.y = 1.0;
+    vehicle.add(edges);
+    
     // Create a cabin for the vehicle
     const cabinGeometry = new THREE.BoxGeometry(2.0, 0.8, 1.5);
     const cabinMaterial = new THREE.MeshStandardMaterial({
-        color: 0xEEEEEE, // Light gray
-        metalness: 0.3,
-        roughness: 0.5
+        color: 0x000022, // Very dark blue
+        metalness: 0.7,
+        roughness: 0.3,
+        emissive: 0xff00aa, // Pink/purple neon glow
+        emissiveIntensity: 0.5
     });
     const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
     cabin.position.y = 1.9; // On top of body
@@ -553,24 +685,39 @@ function createVehicle() {
     cabin.receiveShadow = true;
     vehicle.add(cabin);
     
-    // Add windows to the cabin
+    // Add neon trim to the cabin
+    const cabinEdgeGeometry = new THREE.EdgesGeometry(cabinGeometry);
+    const cabinEdgeMaterial = new THREE.LineBasicMaterial({ 
+        color: 0xff00ff, // Magenta neon
+        emissive: 0xff00ff,
+        emissiveIntensity: 1.0,
+        linewidth: 2
+    });
+    const cabinEdges = new THREE.LineSegments(cabinEdgeGeometry, cabinEdgeMaterial);
+    cabinEdges.position.y = 1.9;
+    cabinEdges.position.z = -0.8;
+    vehicle.add(cabinEdges);
+    
+    // Add windows to the cabin with neon glow
     const windowMaterial = new THREE.MeshStandardMaterial({
-        color: 0x88CCFF, // Light blue
+        color: 0x88ccff, // Light blue
         metalness: 0.9,
         roughness: 0.1,
-        transparent: true,  // Make window transparent
-        opacity: 0.7,       // Slightly transparent
-        depthWrite: false   // Helps prevent z-fighting
+        transparent: true,  
+        opacity: 0.7,      
+        depthWrite: false,
+        emissive: 0x00ffff, // Cyan glow
+        emissiveIntensity: 0.5
     });
     
-    // Front window - adjusted position and size to prevent z-fighting
-    const frontWindowGeometry = new THREE.BoxGeometry(1.7, 0.55, 0.05); // Slightly smaller than cabin
+    // Front window
+    const frontWindowGeometry = new THREE.BoxGeometry(1.7, 0.55, 0.05);
     const frontWindow = new THREE.Mesh(frontWindowGeometry, windowMaterial);
     frontWindow.position.y = 1.9;
-    frontWindow.position.z = -1.55; // Moved slightly forward from cabin front
+    frontWindow.position.z = -1.55;
     vehicle.add(frontWindow);
     
-    // Add side windows for better appearance and to reduce the perception of any remaining z-fighting
+    // Side windows
     const leftWindowGeometry = new THREE.BoxGeometry(0.05, 0.55, 1.3);
     const leftWindow = new THREE.Mesh(leftWindowGeometry, windowMaterial);
     leftWindow.position.set(-0.99, 1.9, -0.8);
@@ -581,12 +728,12 @@ function createVehicle() {
     rightWindow.position.set(0.99, 1.9, -0.8);
     vehicle.add(rightWindow);
     
-    // Create four wheels
+    // Create four wheels with neon rims
     const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
     const wheelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333, // Dark gray
-        metalness: 0.5,
-        roughness: 0.7
+        color: 0x111111, // Almost black
+        metalness: 0.8,
+        roughness: 0.2
     });
     
     // Position the wheels at the corners of the vehicle
@@ -598,7 +745,7 @@ function createVehicle() {
     ];
     
     const wheels = [];
-    wheelPositions.forEach(position => {
+    wheelPositions.forEach((position, index) => {
         const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
         wheel.position.set(position.x, position.y, position.z);
         wheel.rotation.z = Math.PI / 2; // Rotate to align with vehicle
@@ -606,32 +753,199 @@ function createVehicle() {
         wheel.receiveShadow = true;
         wheels.push(wheel);
         vehicle.add(wheel);
+        
+        // Add neon rim (different colors for front/back)
+        const rimGeometry = new THREE.TorusGeometry(0.5, 0.05, 8, 24);
+        const rimMaterial = new THREE.MeshStandardMaterial({
+            color: index < 2 ? 0x00ffff : 0xff00aa, // Cyan for front, pink for back
+            emissive: index < 2 ? 0x00ffff : 0xff00aa,
+            emissiveIntensity: 0.8,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+        rim.position.set(position.x, position.y, position.z);
+        
+        // Rotate rim to match wheel orientation
+        if (index === 0 || index === 2) { // Left side
+            rim.rotation.x = Math.PI / 2;
+        } else { // Right side
+            rim.rotation.x = Math.PI / 2;
+        }
+        vehicle.add(rim);
     });
     
-    // Add bull bar / front guard
-    const bullBarGeometry = new THREE.BoxGeometry(2.6, 0.5, 0.2);
-    const bullBarMaterial = new THREE.MeshStandardMaterial({
-        color: 0x888888, // Silver
-        metalness: 0.8,
-        roughness: 0.2
+    // Add neon headlights and taillights
+    const headlightGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const headlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0x88ccff, 
+        emissiveIntensity: 1.0,
+        metalness: 0.9,
+        roughness: 0.1
     });
-    const bullBar = new THREE.Mesh(bullBarGeometry, bullBarMaterial);
-    bullBar.position.y = 0.7;
-    bullBar.position.z = -2.1;
-    bullBar.castShadow = true;
-    bullBar.receiveShadow = true;
-    vehicle.add(bullBar);
+    
+    // Headlights (cyan)
+    const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    leftHeadlight.position.set(-0.8, 0.9, -2.0);
+    leftHeadlight.scale.set(1, 1, 0.5); // Flatten slightly
+    vehicle.add(leftHeadlight);
+    
+    const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    rightHeadlight.position.set(0.8, 0.9, -2.0);
+    rightHeadlight.scale.set(1, 1, 0.5);
+    vehicle.add(rightHeadlight);
+    
+    // Taillights (magenta)
+    const taillightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xff0088,
+        emissiveIntensity: 1.0,
+        metalness: 0.9,
+        roughness: 0.1
+    });
+    
+    const leftTaillight = new THREE.Mesh(headlightGeometry, taillightMaterial);
+    leftTaillight.position.set(-0.8, 0.9, 2.0);
+    leftTaillight.scale.set(1, 1, 0.5);
+    vehicle.add(leftTaillight);
+    
+    const rightTaillight = new THREE.Mesh(headlightGeometry, taillightMaterial);
+    rightTaillight.position.set(0.8, 0.9, 2.0);
+    rightTaillight.scale.set(1, 1, 0.5);
+    vehicle.add(rightTaillight);
     
     // Add the vehicle to the scene
     scene.add(vehicle);
+    
+    // Create headlight cone effects
+    const leftHeadlightCone = createLightCone(0x00ffff);
+    leftHeadlightCone.position.set(-0.8, 0.9, -2.0);
+    leftHeadlightCone.rotation.x = Math.PI / 2;
+    vehicle.add(leftHeadlightCone);
+    
+    const rightHeadlightCone = createLightCone(0x00ffff);
+    rightHeadlightCone.position.set(0.8, 0.9, -2.0);
+    rightHeadlightCone.rotation.x = Math.PI / 2;
+    vehicle.add(rightHeadlightCone);
     
     // Store relevant vehicle parts for animation and movement
     return {
         group: vehicle,
         body,
         wheels,
-        cabin
+        cabin,
+        headlights: [leftHeadlight, rightHeadlight],
+        taillights: [leftTaillight, rightTaillight],
+        headlightCones: [leftHeadlightCone, rightHeadlightCone]
     };
+}
+
+// Create a light cone effect for headlights
+function createLightCone(color) {
+    const coneGeometry = new THREE.ConeGeometry(2, 5, 16, 1, true);
+    const coneMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.DoubleSide
+    });
+    
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    cone.position.z = -2.5; // Position in front of vehicle
+    
+    return cone;
+}
+
+// Create a cube for the rhythm game with neon style
+function createRhythmCube() {
+    const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
+    
+    // Add beveled edges for more cyberpunk feel
+    const cubeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x000000, // Black base
+        emissive: 0xffffff, // Will be overridden per lane
+        emissiveIntensity: 1.0,
+        metalness: 0.9,
+        roughness: 0.1,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    cube.visible = false;
+    cube.castShadow = true;
+    cube.receiveShadow = true;
+    cube.userData = {
+        active: false,
+        lane: 0,
+        beatTime: 0,
+        initialScale: 1
+    };
+    
+    // Add glowing edges
+    const edges = new THREE.EdgesGeometry(cubeGeometry);
+    const edgeMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff, // Will be overridden per lane
+        linewidth: 2
+    });
+    
+    const wireframe = new THREE.LineSegments(edges, edgeMaterial);
+    cube.add(wireframe);
+    cube.wireframe = wireframe;
+    
+    scene.add(cube);
+    return cube;
+}
+
+// Spawn a beat cube at the given lane with neon colors
+function spawnBeatCube(lane, beatTime) {
+    const cube = getPooledCube();
+    
+    // Get lane position
+    const lanePos = rhythmGame.lanePositions[lane];
+    
+    // Calculate spawn position (in front of vehicle)
+    const vehicleRotation = vehicleControls.rotation;
+    const forwardVector = new THREE.Vector3(
+        Math.sin(vehicleRotation),
+        0,
+        Math.cos(vehicleRotation)
+    );
+    
+    const spawnPos = new THREE.Vector3().copy(lanePos).add(
+        forwardVector.clone().multiplyScalar(rhythmGame.spawnDistance)
+    );
+    
+    // Position the cube
+    cube.position.copy(spawnPos);
+    cube.position.y = 1.5; // Slightly above the ground
+    
+    // Store the lane and beat time
+    cube.userData.lane = lane;
+    cube.userData.beatTime = beatTime;
+    cube.userData.initialScale = 1;
+    
+    // Reset cube appearance
+    cube.scale.set(1, 1, 1);
+    cube.material.emissiveIntensity = 1.0;
+    
+    // Assign a neon color based on lane
+    if (lane === 0) {
+        // Red/magenta for left lane
+        cube.material.emissive.setRGB(1, 0, 0.7);
+        cube.wireframe.material.color.setRGB(1, 0, 0.7);
+    } else if (lane === 1) {
+        // Cyan for center lane
+        cube.material.emissive.setRGB(0, 1, 1);
+        cube.wireframe.material.color.setRGB(0, 1, 1);
+    } else {
+        // Purple/blue for right lane
+        cube.material.emissive.setRGB(0.5, 0, 1);
+        cube.wireframe.material.color.setRGB(0.5, 0, 1);
+    }
+    
+    return cube;
 }
 
 // Vehicle movement controls and state
@@ -891,23 +1205,300 @@ window.addEventListener('resize', () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
-// Track time for animation
-let previousTime = 0;
-
 // Animation loop
 function animate(time) {
     requestAnimationFrame(animate);
     
+    // Convert time to milliseconds for easier rhythm calculations
+    const timeMs = time;
+    
     // Calculate time delta for smooth animation
-    const deltaTime = time - previousTime;
-    previousTime = time;
+    const deltaTime = timeMs - previousTime;
+    previousTime = timeMs;
     
     // Update vehicle movement
     updateVehicleMovement(deltaTime);
+    
+    // Update rhythm game system
+    updateRhythmGame(deltaTime, timeMs);
     
     // Render the scene
     renderer.render(scene, camera);
 }
 
 // Start the animation loop
-animate(0); 
+animate(0);
+
+// Set up audio analyzer for music visualization
+function setupAudioAnalyzer() {
+    // Create analyzer node
+    audioAnalyzer = audioListener.context.createAnalyser();
+    audioAnalyzer.fftSize = 256;
+    audioAnalyzer.smoothingTimeConstant = 0.8;
+    
+    // Connect music to analyzer
+    backgroundMusic.setFilters([audioAnalyzer]);
+    
+    // Create array for analyzer data
+    analyzerData = new Uint8Array(audioAnalyzer.frequencyBinCount);
+    
+    console.log("Audio analyzer setup complete");
+    
+    // Initialize rhythm game system once analyzer is set up
+    initRhythmGameSystem();
+}
+
+// Initialize the rhythm game system
+function initRhythmGameSystem() {
+    // Clear any existing cubes
+    rhythmGame.activeCubes.forEach(cube => {
+        scene.remove(cube);
+    });
+    
+    rhythmGame.activeCubes = [];
+    rhythmGame.cubePool = [];
+    
+    // Create cube pool
+    for (let i = 0; i < rhythmGame.poolSize; i++) {
+        const cube = createRhythmCube();
+        rhythmGame.cubePool.push(cube);
+    }
+    
+    // Set up lane positions
+    updateLanePositions();
+    
+    // Calculate beat interval from BPM
+    rhythmGame.beatInterval = 60000 / rhythmGame.bpm;
+    
+    console.log(`Rhythm game initialized with BPM: ${rhythmGame.bpm}, beat interval: ${rhythmGame.beatInterval}ms`);
+}
+
+// Update lane positions based on vehicle position and rotation
+function updateLanePositions() {
+    const vehiclePos = vehicle.group.position;
+    const vehicleRotation = vehicleControls.rotation;
+    
+    // Calculate lane vectors based on vehicle orientation
+    const forwardVector = new THREE.Vector3(
+        Math.sin(vehicleRotation),
+        0,
+        Math.cos(vehicleRotation)
+    );
+    
+    const rightVector = new THREE.Vector3(
+        Math.sin(vehicleRotation + Math.PI/2),
+        0,
+        Math.cos(vehicleRotation + Math.PI/2)
+    );
+    
+    // Create 3 lanes, one directly in front and one to each side
+    rhythmGame.lanePositions = [
+        new THREE.Vector3().copy(vehiclePos).add(rightVector.clone().multiplyScalar(-rhythmGame.laneWidth)),
+        new THREE.Vector3().copy(vehiclePos),
+        new THREE.Vector3().copy(vehiclePos).add(rightVector.clone().multiplyScalar(rhythmGame.laneWidth))
+    ];
+}
+
+// Get a cube from the pool
+function getPooledCube() {
+    // Check if there's an available cube in the pool
+    for (const cube of rhythmGame.cubePool) {
+        if (!cube.userData.active) {
+            cube.visible = true;
+            cube.userData.active = true;
+            rhythmGame.activeCubes.push(cube);
+            return cube;
+        }
+    }
+    
+    // If no cubes available, create a new one
+    console.log("Pool exhausted, creating new cube");
+    const newCube = createRhythmCube();
+    newCube.visible = true;
+    newCube.userData.active = true;
+    rhythmGame.cubePool.push(newCube);
+    rhythmGame.activeCubes.push(newCube);
+    return newCube;
+}
+
+// Return a cube to the pool
+function returnCubeToPool(cube) {
+    cube.visible = false;
+    cube.userData.active = false;
+    
+    // Remove from active cubes
+    const index = rhythmGame.activeCubes.indexOf(cube);
+    if (index >= 0) {
+        rhythmGame.activeCubes.splice(index, 1);
+    }
+}
+
+// Process rhythm game beat detection and cube spawning
+function updateRhythmGame(deltaTime, currentTime) {
+    if (!rhythmGame.enabled || !musicPlaying || !audioAnalyzer) return;
+    
+    // Update lane positions based on vehicle movement
+    updateLanePositions();
+    
+    // Get frequency data for beat detection
+    audioAnalyzer.getByteFrequencyData(analyzerData);
+    
+    // Simple beat detection - check if bass frequencies exceed threshold
+    let bassEnergy = 0;
+    for (let i = rhythmGame.beatDetectionFrequencyRange[0]; i <= rhythmGame.beatDetectionFrequencyRange[1]; i++) {
+        bassEnergy += analyzerData[i];
+    }
+    bassEnergy /= (rhythmGame.beatDetectionFrequencyRange[1] - rhythmGame.beatDetectionFrequencyRange[0] + 1);
+    bassEnergy /= 255; // Normalize to 0-1
+    
+    // Beat detection
+    const timeSinceLastBeat = currentTime - rhythmGame.lastBeatTime;
+    const minBeatInterval = rhythmGame.beatInterval * 0.5; // Prevent beats too close together
+    
+    if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
+        rhythmGame.lastBeatTime = currentTime;
+        
+        // Schedule cubes ahead of time based on beatsAhead value
+        for (let i = 1; i <= rhythmGame.beatsAhead; i++) {
+            const beatTime = currentTime + (rhythmGame.beatInterval * i * 2); // Double time for slower approach
+            const lane = Math.floor(Math.random() * rhythmGame.lanes);
+            spawnBeatCube(lane, beatTime);
+        }
+    }
+    
+    // Update existing cubes
+    for (let i = rhythmGame.activeCubes.length - 1; i >= 0; i--) {
+        const cube = rhythmGame.activeCubes[i];
+        
+        // Get lane position
+        const laneIndex = cube.userData.lane;
+        const lanePos = rhythmGame.lanePositions[laneIndex];
+        
+        // Calculate how far along its journey the cube is
+        const vehiclePos = vehicle.group.position;
+        const vehicleRotation = vehicleControls.rotation;
+        const forwardVector = new THREE.Vector3(
+            Math.sin(vehicleRotation),
+            0,
+            Math.cos(vehicleRotation)
+        );
+        
+        // Calculate target position (moving toward vehicle)
+        const timeToBeat = cube.userData.beatTime - currentTime;
+        const distanceFromVehicle = (timeToBeat / (rhythmGame.beatInterval * 2)) * rhythmGame.spawnDistance;
+        
+        const targetPos = new THREE.Vector3().copy(lanePos).add(
+            forwardVector.clone().multiplyScalar(distanceFromVehicle)
+        );
+        
+        // Move cube toward target position (slower interpolation)
+        cube.position.x += (targetPos.x - cube.position.x) * 0.02;
+        cube.position.z += (targetPos.z - cube.position.z) * 0.02;
+        
+        // Pulse effect as cube approaches vehicle
+        const beatProgress = 1 - (timeToBeat / (rhythmGame.beatInterval * 2));
+        
+        // More pronounced pulse as the cube gets closer
+        if (beatProgress > 0) {
+            const pulseIntensity = Math.max(0.5, Math.min(1.5, 0.5 + Math.sin(beatProgress * Math.PI * 2) * 0.5));
+            cube.scale.set(
+                cube.userData.initialScale * pulseIntensity,
+                cube.userData.initialScale * pulseIntensity,
+                cube.userData.initialScale * pulseIntensity
+            );
+            
+            // Increase glow as it gets closer
+            cube.material.emissiveIntensity = 0.5 + beatProgress * 0.8;
+        }
+        
+        // Check if cube has passed the vehicle (now using actual position comparison, not time-based)
+        // Calculate vector from vehicle to cube
+        const vehicleToCube = new THREE.Vector3().subVectors(cube.position, vehiclePos);
+        
+        // Project this vector onto the vehicle's forward direction to see if it's behind
+        const dotProduct = vehicleToCube.dot(forwardVector);
+        
+        // If the dot product is negative, the cube is behind the vehicle
+        if (dotProduct < rhythmGame.despawnDistance) {
+            returnCubeToPool(cube);
+        }
+    }
+}
+
+// Check if player hit a cube in the lane
+function checkLaneHit(lane) {
+    const hitThreshold = 0.6; // Increased from 0.3 to 0.6 to make hitting easier with slower cubes
+    const currentTime = previousTime;
+    let hitCube = null;
+    let closestBeatTime = Infinity;
+    
+    // Find the closest cube in the lane that's approaching the hit zone
+    for (const cube of rhythmGame.activeCubes) {
+        if (cube.userData.lane === lane) {
+            const beatTimeDiff = Math.abs(cube.userData.beatTime - currentTime);
+            
+            if (beatTimeDiff < hitThreshold * 1000 && beatTimeDiff < closestBeatTime) {
+                hitCube = cube;
+                closestBeatTime = beatTimeDiff;
+            }
+        }
+    }
+    
+    if (hitCube) {
+        // Flash the cube when hit
+        hitCube.material.emissiveIntensity = 2;
+        
+        // Add a brief scale effect
+        hitCube.scale.set(1.5, 1.5, 1.5);
+        
+        // Show hit type based on timing
+        const accuracy = closestBeatTime / (hitThreshold * 1000);
+        let hitType = "PERFECT";
+        
+        if (accuracy < 0.3) {
+            hitType = "PERFECT";
+        } else if (accuracy < 0.6) {
+            hitType = "GREAT";
+        } else {
+            hitType = "GOOD";
+        }
+        
+        console.log(`Hit ${hitType} on lane ${lane} with accuracy ${Math.round((1-accuracy) * 100)}%`);
+        
+        // Return cube to pool after a slight delay to show hit effect
+        setTimeout(() => {
+            returnCubeToPool(hitCube);
+        }, 100);
+    }
+}
+
+// Add key controls for rhythm game
+function setupRhythmGameControls() {
+    window.addEventListener('keydown', (event) => {
+        if (!rhythmGame.enabled || !musicPlaying) return;
+        
+        let laneHit = -1;
+        
+        switch(event.key) {
+            case 'a':
+            case 'A':
+                laneHit = 0; // Left lane
+                break;
+            case 's':
+            case 'S':
+                laneHit = 1; // Center lane
+                break;
+            case 'd':
+            case 'D':
+                laneHit = 2; // Right lane
+                break;
+        }
+        
+        if (laneHit >= 0) {
+            checkLaneHit(laneHit);
+        }
+    });
+}
+
+// Initialize rhythm game controls
+setupRhythmGameControls(); 
