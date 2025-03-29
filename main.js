@@ -775,28 +775,8 @@ function createVehicle() {
         vehicle.add(rim);
     });
     
-    // Add neon headlights and taillights
-    const headlightGeometry = new THREE.SphereGeometry(0.2, 16, 16);
-    const headlightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        emissive: 0x88ccff, 
-        emissiveIntensity: 1.0,
-        metalness: 0.9,
-        roughness: 0.1
-    });
-    
-    // Headlights (cyan)
-    const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-    leftHeadlight.position.set(-0.8, 0.9, -2.0);
-    leftHeadlight.scale.set(1, 1, 0.5); // Flatten slightly
-    vehicle.add(leftHeadlight);
-    
-    const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-    rightHeadlight.position.set(0.8, 0.9, -2.0);
-    rightHeadlight.scale.set(1, 1, 0.5);
-    vehicle.add(rightHeadlight);
-    
-    // Taillights (magenta)
+    // Taillights (magenta) - At the BACK of the vehicle
+    const taillightGeometry = new THREE.SphereGeometry(0.2, 16, 16);
     const taillightMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         emissive: 0xff0088,
@@ -805,12 +785,12 @@ function createVehicle() {
         roughness: 0.1
     });
     
-    const leftTaillight = new THREE.Mesh(headlightGeometry, taillightMaterial);
+    const leftTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
     leftTaillight.position.set(-0.8, 0.9, 2.0);
     leftTaillight.scale.set(1, 1, 0.5);
     vehicle.add(leftTaillight);
     
-    const rightTaillight = new THREE.Mesh(headlightGeometry, taillightMaterial);
+    const rightTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
     rightTaillight.position.set(0.8, 0.9, 2.0);
     rightTaillight.scale.set(1, 1, 0.5);
     vehicle.add(rightTaillight);
@@ -818,26 +798,13 @@ function createVehicle() {
     // Add the vehicle to the scene
     scene.add(vehicle);
     
-    // Create headlight cone effects
-    const leftHeadlightCone = createLightCone(0x00ffff);
-    leftHeadlightCone.position.set(-0.8, 0.9, -2.0);
-    leftHeadlightCone.rotation.x = Math.PI / 2;
-    vehicle.add(leftHeadlightCone);
-    
-    const rightHeadlightCone = createLightCone(0x00ffff);
-    rightHeadlightCone.position.set(0.8, 0.9, -2.0);
-    rightHeadlightCone.rotation.x = Math.PI / 2;
-    vehicle.add(rightHeadlightCone);
-    
     // Store relevant vehicle parts for animation and movement
     return {
         group: vehicle,
         body,
         wheels,
         cabin,
-        headlights: [leftHeadlight, rightHeadlight],
-        taillights: [leftTaillight, rightTaillight],
-        headlightCones: [leftHeadlightCone, rightHeadlightCone]
+        taillights: [leftTaillight, rightTaillight]
     };
 }
 
@@ -852,7 +819,8 @@ function createLightCone(color) {
     });
     
     const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-    cone.position.z = -2.5; // Position in front of vehicle
+    // The cone geometry should not have an offset in local space
+    // The position will be set when adding to the vehicle
     
     return cone;
 }
