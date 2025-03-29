@@ -447,6 +447,18 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Performance optimization
 
+// Variables for endless runner ground segments
+const endlessRunner = {
+    segments: [],
+    segmentLength: 20,  // Length of each ground segment
+    segmentWidth: 10,   // Width of the track
+    visibleSegments: 15, // Number of segments visible ahead
+    totalSegments: 20,   // Total segments to create (includes some behind player)
+    moveSpeed: 0.5,      // Speed of ground movement
+    groundY: 0,          // Y position of the ground
+    traversedDistance: 0 // Total distance traversed
+};
+
 // Enhanced lighting setup for neon aesthetics
 function setupLighting() {
     // Clear any existing lights from the scene
@@ -511,130 +523,46 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 // Create enhanced ground with neon grid
 function createGroundPlane() {
-    // Create ground with size of 200x200 for larger play area
-    const groundGeometry = new THREE.PlaneGeometry(200, 200, 100, 100);
+    // Instead of a static ground plane, initialize endless runner
+    initEndlessRunner();
     
-    // Custom shader material for the ground - dark with neon grid
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x000000, // Black base
-        roughness: 0.7,
-        metalness: 0.5,
-        emissive: 0x000011, // Very slight blue emissive glow
-    });
-    
-    // Create the ground mesh
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2; // Rotate to be flat on XZ plane
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    // Add neon grid helper for cyberpunk style
-    const gridHelper = new THREE.GridHelper(200, 40, 0x00ffff, 0xff00ff);
-    gridHelper.position.y = 0.02; // Slightly above ground to prevent z-fighting
-    gridHelper.material.opacity = 0.5;
-    gridHelper.material.transparent = true;
-    
-    // Make grid lines glow
-    if (gridHelper.material instanceof THREE.Material) {
-        gridHelper.material.emissive = new THREE.Color(0xffffff);
-        gridHelper.material.emissiveIntensity = 1.0;
-    } else if (Array.isArray(gridHelper.material)) {
-        gridHelper.material.forEach(mat => {
-            mat.emissive = new THREE.Color(0xffffff);
-            mat.emissiveIntensity = 1.0;
-        });
-    }
-    scene.add(gridHelper);
-    
-    // Add second grid for cross-hatch effect
-    const secondGrid = new THREE.GridHelper(200, 40, 0xff00aa, 0x00ffaa);
-    secondGrid.position.y = 0.01;
-    secondGrid.rotation.y = Math.PI / 4; // Rotate 45 degrees
-    secondGrid.material.opacity = 0.3;
-    secondGrid.material.transparent = true;
-    scene.add(secondGrid);
-    
-    // Add some simple terrain variations
-    addTerrainVariations(ground);
-    
-    // Add neon lines along the x and z axes for additional cyberpunk effect
+    // Add neon lines along the x axis as lane dividers
     addNeonAxisLines();
-    
-    return ground;
-}
-
-// Function to add subtle terrain variations to the ground
-function addTerrainVariations(ground) {
-    // For a flat neon grid aesthetic, we'll keep terrain variations very minimal
-    // Just add a few subtle bumps for visual interest, but keep it mostly flat
-    
-    if (!ground.geometry.attributes || !ground.geometry.attributes.position) {
-        console.warn("Cannot add terrain variations - ground geometry is not compatible");
-        return;
-    }
-    
-    // Get position attribute to modify vertices
-    const positions = ground.geometry.attributes.position.array;
-    
-    // Add subtle random variations
-    for (let i = 0; i < positions.length; i += 3) {
-        // Only modify y-values (which is height in our rotated plane)
-        // Skip edge vertices to keep the border flat
-        const x = positions[i];
-        const z = positions[i + 2];
-        
-        // Calculate distance from center
-        const distanceFromCenter = Math.sqrt(x * x + z * z);
-        
-        // Only modify interior vertices to avoid edge issues
-        if (distanceFromCenter < 80) {
-            // Create very subtle height variations
-            // Use noise pattern that looks cyberpunk/grid-like
-            const noiseValue = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 0.1;
-            
-            // Apply the height variation
-            positions[i + 1] = noiseValue;
-        }
-    }
-    
-    // Update the geometry
-    ground.geometry.attributes.position.needsUpdate = true;
-    ground.geometry.computeVertexNormals();
 }
 
 // Add neon lines along the axes
 function addNeonAxisLines() {
-    // X axis - magenta
-    const xGeometry = new THREE.BufferGeometry();
-    const xPoints = [
-        new THREE.Vector3(-100, 0.1, 0),
-        new THREE.Vector3(100, 0.1, 0)
+    // Lane dividers along the Z axis - magenta
+    const leftLaneGeometry = new THREE.BufferGeometry();
+    const leftLanePoints = [
+        new THREE.Vector3(-vehicleControls.laneWidth/2, 0.1, -100),
+        new THREE.Vector3(-vehicleControls.laneWidth/2, 0.1, 100)
     ];
-    xGeometry.setFromPoints(xPoints);
-    const xMaterial = new THREE.LineBasicMaterial({
+    leftLaneGeometry.setFromPoints(leftLanePoints);
+    const leftLaneMaterial = new THREE.LineBasicMaterial({
         color: 0xff00ff,
         linewidth: 3,
         emissive: 0xff00ff,
         emissiveIntensity: 1.0
     });
-    const xLine = new THREE.Line(xGeometry, xMaterial);
-    scene.add(xLine);
+    const leftLaneLine = new THREE.Line(leftLaneGeometry, leftLaneMaterial);
+    scene.add(leftLaneLine);
     
-    // Z axis - cyan
-    const zGeometry = new THREE.BufferGeometry();
-    const zPoints = [
-        new THREE.Vector3(0, 0.1, -100),
-        new THREE.Vector3(0, 0.1, 100)
+    // Right lane divider
+    const rightLaneGeometry = new THREE.BufferGeometry();
+    const rightLanePoints = [
+        new THREE.Vector3(vehicleControls.laneWidth/2, 0.1, -100),
+        new THREE.Vector3(vehicleControls.laneWidth/2, 0.1, 100)
     ];
-    zGeometry.setFromPoints(zPoints);
-    const zMaterial = new THREE.LineBasicMaterial({
-        color: 0x00ffff,
+    rightLaneGeometry.setFromPoints(rightLanePoints);
+    const rightLaneMaterial = new THREE.LineBasicMaterial({
+        color: 0xff00ff,
         linewidth: 3,
-        emissive: 0x00ffff,
+        emissive: 0xff00ff,
         emissiveIntensity: 1.0
     });
-    const zLine = new THREE.Line(zGeometry, zMaterial);
-    scene.add(zLine);
+    const rightLaneLine = new THREE.Line(rightLaneGeometry, rightLaneMaterial);
+    scene.add(rightLaneLine);
 }
 
 // Function to create a neon vehicle model
@@ -866,75 +794,23 @@ function createRhythmCube() {
     return cube;
 }
 
-// Spawn a beat cube at the given lane with neon colors
-function spawnBeatCube(lane, beatTime) {
-    const cube = getPooledCube();
-    
-    // Get lane position
-    const lanePos = rhythmGame.lanePositions[lane];
-    
-    // Calculate spawn position (in front of vehicle)
-    const vehicleRotation = vehicleControls.rotation;
-    const forwardVector = new THREE.Vector3(
-        Math.sin(vehicleRotation),
-        0,
-        Math.cos(vehicleRotation)
-    );
-    
-    const spawnPos = new THREE.Vector3().copy(lanePos).add(
-        forwardVector.clone().multiplyScalar(rhythmGame.spawnDistance)
-    );
-    
-    // Position the cube
-    cube.position.copy(spawnPos);
-    cube.position.y = 1.5; // Slightly above the ground
-    
-    // Store the lane and beat time
-    cube.userData.lane = lane;
-    cube.userData.beatTime = beatTime;
-    cube.userData.initialScale = 1;
-    
-    // Reset cube appearance
-    cube.scale.set(1, 1, 1);
-    cube.material.emissiveIntensity = 1.0;
-    
-    // Assign a neon color based on lane
-    if (lane === 0) {
-        // Red/magenta for left lane
-        cube.material.emissive.setRGB(1, 0, 0.7);
-        cube.wireframe.material.color.setRGB(1, 0, 0.7);
-    } else if (lane === 1) {
-        // Cyan for center lane
-        cube.material.emissive.setRGB(0, 1, 1);
-        cube.wireframe.material.color.setRGB(0, 1, 1);
-    } else {
-        // Purple/blue for right lane
-        cube.material.emissive.setRGB(0.5, 0, 1);
-        cube.wireframe.material.color.setRGB(0.5, 0, 1);
-    }
-    
-    return cube;
-}
-
 // Vehicle movement controls and state
 const vehicleControls = {
-    speed: 0,
+    speed: 0.5, // Constant forward speed for endless runner
     maxSpeed: 0.5,
     acceleration: 0.01,
     deceleration: 0.005,
-    reverseMaxSpeed: -0.2,
     turnSpeed: 0.03,
     maxTurnSpeed: 0.05,
     wheelRotationSpeed: 0.2,
     keys: {
-        forward: false,
-        backward: false,
         left: false,
-        right: false,
-        brake: false
+        right: false
     },
     position: new THREE.Vector3(0, 0, 0),
-    rotation: 0,
+    targetLane: 1, // Center lane (0=left, 1=center, 2=right)
+    laneWidth: 3, // Distance between lanes
+    laneChangeSpeed: 0.1, // How fast to change lanes
     // Track vehicle's forward direction vector
     direction: new THREE.Vector3(0, 0, -1)
 };
@@ -944,20 +820,11 @@ function updateThirdPersonCamera() {
     if (!thirdPersonCamera.isActive) return;
     
     const vehiclePos = vehicle.group.position;
-    const vehicleRotation = vehicleControls.rotation;
     
-    // Calculate ideal position behind vehicle (Carmageddon 2 style)
-    // Always position camera directly behind the vehicle based on vehicle's rotation
-    const idealDistance = thirdPersonCamera.distance + (Math.abs(vehicleControls.speed) * 2); 
-    
-    // Calculate the camera position directly behind the vehicle based on its rotation
-    // Using negative sin/cos to position camera behind the vehicle
-    const idealX = vehiclePos.x - Math.sin(vehicleRotation) * idealDistance;
-    const idealZ = vehiclePos.z - Math.cos(vehicleRotation) * idealDistance;
-    
-    // Set target position with height based on speed (higher when faster)
-    const heightBoost = Math.abs(vehicleControls.speed) * 3; 
-    const idealHeight = vehiclePos.y + thirdPersonCamera.height + heightBoost;
+    // Set camera to fixed position behind and slightly above the vehicle
+    const idealX = vehiclePos.x;
+    const idealZ = vehiclePos.z + 10; // Fixed distance behind
+    const idealHeight = vehiclePos.y + 5; // Fixed height above
     
     // Smoothly approach target position with damping (no sudden snapping)
     if (!thirdPersonCamera.currentPosition.x) {
@@ -975,12 +842,11 @@ function updateThirdPersonCamera() {
     // Update camera position
     camera.position.copy(thirdPersonCamera.currentPosition);
     
-    // Calculate look-at point - slightly ahead of vehicle based on its rotation
-    const lookAheadDistance = vehicleControls.speed * 4; // Look ahead more at higher speeds
+    // Look at vehicle (slightly ahead)
     const lookAtPos = new THREE.Vector3(
-        vehiclePos.x + Math.sin(vehicleRotation) * lookAheadDistance,
-        vehiclePos.y + thirdPersonCamera.lookAtHeight,
-        vehiclePos.z + Math.cos(vehicleRotation) * lookAheadDistance
+        vehiclePos.x,
+        vehiclePos.y + 1,
+        vehiclePos.z - 5 // Look ahead of the vehicle
     );
     
     // Always maintain world up vector
@@ -988,77 +854,33 @@ function updateThirdPersonCamera() {
     
     // Smoothly look at the target
     camera.lookAt(lookAtPos);
-    
-    // Apply a subtle bank effect during turns but limit it to prevent disorientation
-    if (vehicleControls.keys.left && Math.abs(vehicleControls.speed) > 0.05) {
-        // Banking into left turns (limited tilt)
-        const bankAmount = Math.min(0.05, Math.abs(vehicleControls.speed) * 0.1);
-        camera.rotateZ(bankAmount);
-    } else if (vehicleControls.keys.right && Math.abs(vehicleControls.speed) > 0.05) {
-        // Banking into right turns (limited tilt)
-        const bankAmount = Math.min(0.05, Math.abs(vehicleControls.speed) * 0.1);
-        camera.rotateZ(-bankAmount);
-    }
 }
 
 // Function to update vehicle position and rotation based on controls
 function updateVehicleMovement(deltaTime) {
     const controls = vehicleControls;
     
-    // Apply acceleration/deceleration based on key inputs
-    if (controls.keys.forward) {
-        controls.speed += controls.acceleration;
-        if (controls.speed > controls.maxSpeed) {
-            controls.speed = controls.maxSpeed;
-        }
-    } else if (controls.keys.backward) {
-        controls.speed -= controls.acceleration;
-        if (controls.speed < controls.reverseMaxSpeed) {
-            controls.speed = controls.reverseMaxSpeed;
-        }
-    } else {
-        // Apply natural deceleration when no keys pressed
-        if (Math.abs(controls.speed) < controls.deceleration) {
-            controls.speed = 0;
-        } else if (controls.speed > 0) {
-            controls.speed -= controls.deceleration;
-        } else if (controls.speed < 0) {
-            controls.speed += controls.deceleration;
-        }
+    // Speed is constant in endless runner mode
+    controls.speed = controls.maxSpeed;
+    
+    // Calculate target X position based on lane
+    const targetX = (controls.targetLane - 1) * controls.laneWidth;
+    
+    // Handle lane changes with arrow keys
+    if (controls.keys.left && controls.targetLane > 0) {
+        controls.targetLane--;
+        controls.keys.left = false; // Prevent holding key
+    }
+    if (controls.keys.right && controls.targetLane < 2) {
+        controls.targetLane++;
+        controls.keys.right = false; // Prevent holding key
     }
     
-    // Apply braking when space is pressed
-    if (controls.keys.brake) {
-        if (Math.abs(controls.speed) < controls.deceleration * 3) {
-            controls.speed = 0;
-        } else if (controls.speed > 0) {
-            controls.speed -= controls.deceleration * 3;
-        } else if (controls.speed < 0) {
-            controls.speed += controls.deceleration * 3;
-        }
-    }
+    // Smoothly move towards target lane
+    vehicle.group.position.x += (targetX - vehicle.group.position.x) * controls.laneChangeSpeed;
     
-    // Apply turning based on key inputs (only when moving)
-    if (Math.abs(controls.speed) > 0.01) {
-        const turnAmount = controls.turnSpeed * (controls.speed > 0 ? 1 : -1);
-        
-        if (controls.keys.left) {
-            controls.rotation += turnAmount;
-        }
-        if (controls.keys.right) {
-            controls.rotation -= turnAmount;
-        }
-    }
-    
-    // Calculate new position based on speed and rotation
-    const velocity = new THREE.Vector3(
-        Math.sin(controls.rotation) * controls.speed,
-        0,
-        Math.cos(controls.rotation) * controls.speed
-    );
-    
-    // Update vehicle position
-    vehicle.group.position.add(velocity);
+    // Keep vehicle at fixed Z position
+    vehicle.group.position.z = 0;
     
     // Update vehicle light to follow the vehicle
     if (scene.vehicleLight) {
@@ -1069,17 +891,7 @@ function updateVehicleMovement(deltaTime) {
         );
     }
     
-    // Update vehicle rotation
-    vehicle.group.rotation.y = controls.rotation;
-    
-    // Update the direction vector
-    controls.direction.set(
-        Math.sin(controls.rotation),
-        0,
-        Math.cos(controls.rotation)
-    );
-    
-    // Rotate wheels based on speed
+    // Rotate wheels based on speed - wheels should always spin in endless runner
     const wheelRotationAmount = controls.speed * controls.wheelRotationSpeed;
     vehicle.wheels.forEach(wheel => {
         wheel.rotation.x += wheelRotationAmount;
@@ -1096,20 +908,11 @@ function updateVehicleMovement(deltaTime) {
 function setupVehicleControls() {
     window.addEventListener('keydown', (event) => {
         switch(event.key) {
-            case 'ArrowUp':
-                vehicleControls.keys.forward = true;
-                break;
-            case 'ArrowDown':
-                vehicleControls.keys.backward = true;
-                break;
             case 'ArrowLeft':
                 vehicleControls.keys.left = true;
                 break;
             case 'ArrowRight':
                 vehicleControls.keys.right = true;
-                break;
-            case ' ': // Space bar for brakes
-                vehicleControls.keys.brake = true;
                 break;
             case 'c': // Toggle camera mode
                 thirdPersonCamera.isActive = !thirdPersonCamera.isActive;
@@ -1128,20 +931,11 @@ function setupVehicleControls() {
     
     window.addEventListener('keyup', (event) => {
         switch(event.key) {
-            case 'ArrowUp':
-                vehicleControls.keys.forward = false;
-                break;
-            case 'ArrowDown':
-                vehicleControls.keys.backward = false;
-                break;
             case 'ArrowLeft':
                 vehicleControls.keys.left = false;
                 break;
             case 'ArrowRight':
                 vehicleControls.keys.right = false;
-                break;
-            case ' ': // Space bar for brakes
-                vehicleControls.keys.brake = false;
                 break;
         }
     });
@@ -1173,7 +967,103 @@ window.addEventListener('resize', () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
-// Animation loop
+// Create a segment for the endless runner
+function createGroundSegment(zPosition) {
+    const segmentGeometry = new THREE.PlaneGeometry(
+        endlessRunner.segmentWidth, 
+        endlessRunner.segmentLength, 
+        10, 10
+    );
+    
+    // Custom shader material for the ground - dark with neon grid
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x000000, // Black base
+        roughness: 0.7,
+        metalness: 0.5,
+        emissive: 0x000011, // Very slight blue emissive glow
+    });
+    
+    // Create the ground mesh
+    const segment = new THREE.Mesh(segmentGeometry, groundMaterial);
+    segment.rotation.x = -Math.PI / 2; // Rotate to be flat on XZ plane
+    segment.position.y = endlessRunner.groundY;
+    segment.position.z = zPosition;
+    segment.receiveShadow = true;
+    scene.add(segment);
+    
+    // Add neon grid to the segment
+    const gridHelper = new THREE.GridHelper(
+        endlessRunner.segmentWidth, 
+        4, 
+        0x00ffff, 
+        0xff00ff
+    );
+    gridHelper.position.y = 0.02; // Slightly above ground to prevent z-fighting
+    gridHelper.position.z = zPosition;
+    gridHelper.material.opacity = 0.5;
+    gridHelper.material.transparent = true;
+    
+    // Make grid lines glow
+    if (gridHelper.material instanceof THREE.Material) {
+        gridHelper.material.emissive = new THREE.Color(0xffffff);
+        gridHelper.material.emissiveIntensity = 1.0;
+    } else if (Array.isArray(gridHelper.material)) {
+        gridHelper.material.forEach(mat => {
+            mat.emissive = new THREE.Color(0xffffff);
+            mat.emissiveIntensity = 1.0;
+        });
+    }
+    scene.add(gridHelper);
+    
+    return {
+        segment: segment,
+        grid: gridHelper,
+        position: zPosition
+    };
+}
+
+// Initialize the endless runner ground segments
+function initEndlessRunner() {
+    // Create initial segments
+    for (let i = 0; i < endlessRunner.totalSegments; i++) {
+        const zPos = -i * endlessRunner.segmentLength;
+        const segment = createGroundSegment(zPos);
+        endlessRunner.segments.push(segment);
+    }
+    
+    // Position lanes for rhythm game
+    rhythmGame.laneWidth = vehicleControls.laneWidth;
+    
+    // Update lane positions for rhythm game
+    rhythmGame.lanePositions = [
+        new THREE.Vector3(-rhythmGame.laneWidth, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(rhythmGame.laneWidth, 0, 0)
+    ];
+}
+
+// Update endless runner ground movement
+function updateEndlessRunner(deltaTime) {
+    // Move all segments forward
+    endlessRunner.segments.forEach(segment => {
+        segment.position += endlessRunner.moveSpeed;
+        segment.segment.position.z = segment.position;
+        segment.grid.position.z = segment.position;
+        
+        // If segment is too far behind, move it to the front
+        if (segment.position > endlessRunner.segmentLength) {
+            // Calculate new position at the end of the track
+            segment.position = -endlessRunner.segmentLength * (endlessRunner.totalSegments - 1);
+            segment.segment.position.z = segment.position;
+            segment.grid.position.z = segment.position;
+        }
+    });
+    
+    // Update total distance traversed (for scoring)
+    endlessRunner.traversedDistance += endlessRunner.moveSpeed;
+}
+
+// Animation loop - this is the only animate function we should have
 function animate(time) {
     requestAnimationFrame(animate);
     
@@ -1186,6 +1076,9 @@ function animate(time) {
     
     // Update vehicle movement
     updateVehicleMovement(deltaTime);
+    
+    // Update endless runner ground movement
+    updateEndlessRunner(deltaTime);
     
     // Update rhythm game system
     updateRhythmGame(deltaTime, timeMs);
@@ -1241,29 +1134,13 @@ function initRhythmGameSystem() {
     console.log(`Rhythm game initialized with BPM: ${rhythmGame.bpm}, beat interval: ${rhythmGame.beatInterval}ms`);
 }
 
-// Update lane positions based on vehicle position and rotation
+// Update lane positions based on fixed lanes
 function updateLanePositions() {
-    const vehiclePos = vehicle.group.position;
-    const vehicleRotation = vehicleControls.rotation;
-    
-    // Calculate lane vectors based on vehicle orientation
-    const forwardVector = new THREE.Vector3(
-        Math.sin(vehicleRotation),
-        0,
-        Math.cos(vehicleRotation)
-    );
-    
-    const rightVector = new THREE.Vector3(
-        Math.sin(vehicleRotation + Math.PI/2),
-        0,
-        Math.cos(vehicleRotation + Math.PI/2)
-    );
-    
-    // Create 3 lanes, one directly in front and one to each side
+    // In endless runner, lanes are fixed
     rhythmGame.lanePositions = [
-        new THREE.Vector3().copy(vehiclePos).add(rightVector.clone().multiplyScalar(-rhythmGame.laneWidth)),
-        new THREE.Vector3().copy(vehiclePos),
-        new THREE.Vector3().copy(vehiclePos).add(rightVector.clone().multiplyScalar(rhythmGame.laneWidth))
+        new THREE.Vector3(-rhythmGame.laneWidth, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(rhythmGame.laneWidth, 0, 0)
     ];
 }
 
@@ -1305,9 +1182,6 @@ function returnCubeToPool(cube) {
 function updateRhythmGame(deltaTime, currentTime) {
     if (!rhythmGame.enabled || !musicPlaying || !audioAnalyzer) return;
     
-    // Update lane positions based on vehicle movement
-    updateLanePositions();
-    
     // Get frequency data for beat detection
     audioAnalyzer.getByteFrequencyData(analyzerData);
     
@@ -1343,25 +1217,12 @@ function updateRhythmGame(deltaTime, currentTime) {
         const lanePos = rhythmGame.lanePositions[laneIndex];
         
         // Calculate how far along its journey the cube is
-        const vehiclePos = vehicle.group.position;
-        const vehicleRotation = vehicleControls.rotation;
-        const forwardVector = new THREE.Vector3(
-            Math.sin(vehicleRotation),
-            0,
-            Math.cos(vehicleRotation)
-        );
-        
-        // Calculate target position (moving toward vehicle)
         const timeToBeat = cube.userData.beatTime - currentTime;
         const distanceFromVehicle = (timeToBeat / (rhythmGame.beatInterval * 2)) * rhythmGame.spawnDistance;
         
-        const targetPos = new THREE.Vector3().copy(lanePos).add(
-            forwardVector.clone().multiplyScalar(distanceFromVehicle)
-        );
-        
-        // Move cube toward target position (slower interpolation)
-        cube.position.x += (targetPos.x - cube.position.x) * 0.02;
-        cube.position.z += (targetPos.z - cube.position.z) * 0.02;
+        // In endless runner, cubes move toward the player along Z-axis
+        cube.position.x = lanePos.x;
+        cube.position.z = -distanceFromVehicle; 
         
         // Pulse effect as cube approaches vehicle
         const beatProgress = 1 - (timeToBeat / (rhythmGame.beatInterval * 2));
@@ -1379,94 +1240,50 @@ function updateRhythmGame(deltaTime, currentTime) {
             cube.material.emissiveIntensity = 0.5 + beatProgress * 0.8;
         }
         
-        // Check if cube has passed the vehicle (now using actual position comparison, not time-based)
-        // Calculate vector from vehicle to cube
-        const vehicleToCube = new THREE.Vector3().subVectors(cube.position, vehiclePos);
-        
-        // Project this vector onto the vehicle's forward direction to see if it's behind
-        const dotProduct = vehicleToCube.dot(forwardVector);
-        
-        // If the dot product is negative, the cube is behind the vehicle
-        if (dotProduct < rhythmGame.despawnDistance) {
+        // Check if cube has passed the vehicle (now using Z-position)
+        if (cube.position.z > rhythmGame.despawnDistance) {
             returnCubeToPool(cube);
         }
     }
 }
 
-// Check if player hit a cube in the lane
-function checkLaneHit(lane) {
-    const hitThreshold = 0.6; // Increased from 0.3 to 0.6 to make hitting easier with slower cubes
-    const currentTime = previousTime;
-    let hitCube = null;
-    let closestBeatTime = Infinity;
+// Spawn a beat cube at the given lane with neon colors
+function spawnBeatCube(lane, beatTime) {
+    const cube = getPooledCube();
     
-    // Find the closest cube in the lane that's approaching the hit zone
-    for (const cube of rhythmGame.activeCubes) {
-        if (cube.userData.lane === lane) {
-            const beatTimeDiff = Math.abs(cube.userData.beatTime - currentTime);
-            
-            if (beatTimeDiff < hitThreshold * 1000 && beatTimeDiff < closestBeatTime) {
-                hitCube = cube;
-                closestBeatTime = beatTimeDiff;
-            }
-        }
+    // Get lane position
+    const lanePos = rhythmGame.lanePositions[lane];
+    
+    // Position the cube at the spawn distance
+    cube.position.set(
+        lanePos.x,
+        1.5, // Slightly above the ground
+        -rhythmGame.spawnDistance // Far ahead on Z-axis
+    );
+    
+    // Store the lane and beat time
+    cube.userData.lane = lane;
+    cube.userData.beatTime = beatTime;
+    cube.userData.initialScale = 1;
+    
+    // Reset cube appearance
+    cube.scale.set(1, 1, 1);
+    cube.material.emissiveIntensity = 1.0;
+    
+    // Assign a neon color based on lane
+    if (lane === 0) {
+        // Red/magenta for left lane
+        cube.material.emissive.setRGB(1, 0, 0.7);
+        cube.wireframe.material.color.setRGB(1, 0, 0.7);
+    } else if (lane === 1) {
+        // Cyan for center lane
+        cube.material.emissive.setRGB(0, 1, 1);
+        cube.wireframe.material.color.setRGB(0, 1, 1);
+    } else {
+        // Purple/blue for right lane
+        cube.material.emissive.setRGB(0.5, 0, 1);
+        cube.wireframe.material.color.setRGB(0.5, 0, 1);
     }
     
-    if (hitCube) {
-        // Flash the cube when hit
-        hitCube.material.emissiveIntensity = 2;
-        
-        // Add a brief scale effect
-        hitCube.scale.set(1.5, 1.5, 1.5);
-        
-        // Show hit type based on timing
-        const accuracy = closestBeatTime / (hitThreshold * 1000);
-        let hitType = "PERFECT";
-        
-        if (accuracy < 0.3) {
-            hitType = "PERFECT";
-        } else if (accuracy < 0.6) {
-            hitType = "GREAT";
-        } else {
-            hitType = "GOOD";
-        }
-        
-        console.log(`Hit ${hitType} on lane ${lane} with accuracy ${Math.round((1-accuracy) * 100)}%`);
-        
-        // Return cube to pool after a slight delay to show hit effect
-        setTimeout(() => {
-            returnCubeToPool(hitCube);
-        }, 100);
-    }
-}
-
-// Add key controls for rhythm game
-function setupRhythmGameControls() {
-    window.addEventListener('keydown', (event) => {
-        if (!rhythmGame.enabled || !musicPlaying) return;
-        
-        let laneHit = -1;
-        
-        switch(event.key) {
-            case 'a':
-            case 'A':
-                laneHit = 0; // Left lane
-                break;
-            case 's':
-            case 'S':
-                laneHit = 1; // Center lane
-                break;
-            case 'd':
-            case 'D':
-                laneHit = 2; // Right lane
-                break;
-        }
-        
-        if (laneHit >= 0) {
-            checkLaneHit(laneHit);
-        }
-    });
-}
-
-// Initialize rhythm game controls
-setupRhythmGameControls(); 
+    return cube;
+} 
