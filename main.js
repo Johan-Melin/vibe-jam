@@ -26,19 +26,18 @@ const rhythmGame = {
     enabled: true,
     lanes: 3,
     laneWidth: 3,
-    spawnDistance: 100, // Increased from 50 to 100 for more travel time
-    despawnDistance: -15, // Negative value means behind the vehicle
-    cubeSpeed: 0.02, // Reduced from 0.2 to 0.02 (10x slower)
+    spawnDistance: 100,
+    despawnDistance: 10, 
     nextBeatTime: 0,
     beatInterval: 500, // in milliseconds, will be adjusted based on BPM
     cubePool: [],
     activeCubes: [],
     poolSize: 30,
     lastBeatTime: 0,
-    beatDetectionThreshold: 0.6,
+    beatDetectionThreshold: 0.7, // Increased from 0.6 to 0.7 to detect fewer beats
     beatDetectionFrequencyRange: [2, 8], // Indices in the frequency data to check for beats
     bpm: 130,
-    beatsAhead: 16, // Increased from 8 to 16 for smoother movement
+    beatsAhead: 4, // Reduced from 16 to 4 to spawn fewer cubes at once
     lanePositions: [], // Will store the world positions of the lanes
     passPoint: 0 // Point where cube passes the vehicle (0 = at vehicle position)
 };
@@ -1195,16 +1194,21 @@ function updateRhythmGame(deltaTime, currentTime) {
     
     // Beat detection
     const timeSinceLastBeat = currentTime - rhythmGame.lastBeatTime;
-    const minBeatInterval = rhythmGame.beatInterval * 0.5; // Prevent beats too close together
+    const minBeatInterval = rhythmGame.beatInterval * 0.8; // Increased from 0.5 to 0.8 to further reduce frequency
     
     if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
         rhythmGame.lastBeatTime = currentTime;
         
-        // Schedule cubes ahead of time based on beatsAhead value
-        for (let i = 1; i <= rhythmGame.beatsAhead; i++) {
-            const beatTime = currentTime + (rhythmGame.beatInterval * i * 2); // Double time for slower approach
-            const lane = Math.floor(Math.random() * rhythmGame.lanes);
-            spawnBeatCube(lane, beatTime);
+        // Only spawn one cube per beat, randomly selecting a lane
+        const lane = Math.floor(Math.random() * rhythmGame.lanes);
+        const beatTime = currentTime + (rhythmGame.beatInterval * 4); // Increased from 2 to 4 for slower approach
+        spawnBeatCube(lane, beatTime);
+        
+        // Only occasionally spawn additional cubes (1 in 3 chance)
+        if (Math.random() < 0.3) {
+            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes; // Different lane
+            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5); // Slightly offset timing
+            spawnBeatCube(additionalLane, additionalBeatTime);
         }
     }
     
@@ -1218,14 +1222,33 @@ function updateRhythmGame(deltaTime, currentTime) {
         
         // Calculate how far along its journey the cube is
         const timeToBeat = cube.userData.beatTime - currentTime;
-        const distanceFromVehicle = (timeToBeat / (rhythmGame.beatInterval * 2)) * rhythmGame.spawnDistance;
+        const totalDuration = rhythmGame.beatInterval * 4; // Increased from 2 to 4 to match spawn timing
+        
+        // Allow cubes to continue moving past the vehicle position even after time has passed
+        let distanceFromVehicle;
+        if (timeToBeat >= 0) {
+            // Cube is still approaching the vehicle
+            distanceFromVehicle = (timeToBeat / totalDuration) * rhythmGame.spawnDistance;
+        } else {
+            // Cube has passed the target time and should continue moving behind the vehicle
+            // Calculate how far past the vehicle it should be based on elapsed time since beat
+            const timeSinceBeat = -timeToBeat;
+            const pastDistance = (timeSinceBeat / totalDuration) * rhythmGame.spawnDistance;
+            distanceFromVehicle = -pastDistance; // Negative = behind vehicle
+        }
         
         // In endless runner, cubes move toward the player along Z-axis
         cube.position.x = lanePos.x;
         cube.position.z = -distanceFromVehicle; 
         
         // Pulse effect as cube approaches vehicle
-        const beatProgress = 1 - (timeToBeat / (rhythmGame.beatInterval * 2));
+        let beatProgress;
+        if (timeToBeat >= 0) {
+            beatProgress = 1 - (timeToBeat / totalDuration);
+        } else {
+            // For cubes that have passed the vehicle, keep a consistent appearance
+            beatProgress = 1.0;
+        }
         
         // More pronounced pulse as the cube gets closer
         if (beatProgress > 0) {
@@ -1236,12 +1259,12 @@ function updateRhythmGame(deltaTime, currentTime) {
                 cube.userData.initialScale * pulseIntensity
             );
             
-            // Increase glow as it gets closer
-            cube.material.emissiveIntensity = 0.5 + beatProgress * 0.8;
+            // Increase glow as it gets closer, max out at passing point
+            cube.material.emissiveIntensity = Math.min(2.0, 0.5 + beatProgress * 1.5);
         }
         
-        // Check if cube has passed the vehicle (now using Z-position)
-        if (cube.position.z > rhythmGame.despawnDistance) {
+        // Check if cube has passed too far behind the vehicle
+        if (distanceFromVehicle < -rhythmGame.despawnDistance) {
             returnCubeToPool(cube);
         }
     }
