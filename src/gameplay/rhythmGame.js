@@ -36,7 +36,9 @@ const rhythmGame = {
     particlePoolSize: 20, // Number of particle systems to pre-create
     laneSpawnStatus: [0, 0, 0], // Track when each lane last had a cube spawned
     minLaneSpawnInterval: 1000, // Minimum time between spawns in the same lane (ms)
-    spawnHistory: {} // Track spawn times for each beat time to avoid overlaps
+    spawnHistory: {}, // Track spawn times for each beat time to avoid overlaps
+    fadeInDistance: 180, // Distance at which cubes start to fade in
+    fadeDistance: 120 // Distance at which cubes are fully visible
 };
 
 // Create a cube for the rhythm game with neon style
@@ -667,6 +669,37 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
         cube.position.x = lanePos.x;
         cube.position.z = -distanceFromVehicle; 
         
+        // Calculate distance-based opacity for fade-in effect
+        let opacity = 1.0;
+        if (distanceFromVehicle > rhythmGame.fadeDistance) {
+            // Fade out objects that are too far
+            opacity = 1 - ((distanceFromVehicle - rhythmGame.fadeDistance) / 30);
+            opacity = Math.max(0, opacity);
+        } else if (distanceFromVehicle > rhythmGame.fadeDistance * 0.8) {
+            // Full opacity in optimal range
+            opacity = 1.0;
+        } else {
+            // Fade in objects that are approaching from far away
+            const fadeInStart = rhythmGame.fadeInDistance;
+            if (distanceFromVehicle > fadeInStart) {
+                // Complete fade out when very distant
+                opacity = 0.0;
+            } else {
+                // Gradually fade in as objects get closer
+                opacity = 1.0 - (distanceFromVehicle / fadeInStart);
+                opacity = Math.max(0, Math.min(1, opacity));
+                
+                // Apply easing function for smoother appearance (cubic easing)
+                opacity = opacity * opacity * (3 - 2 * opacity);
+            }
+        }
+        
+        // Apply opacity
+        cube.material.opacity = opacity;
+        if (cube.wireframe) {
+            cube.wireframe.material.opacity = opacity;
+        }
+        
         // Pulse effect as cube approaches vehicle
         let beatProgress;
         if (timeToBeat >= 0) {
@@ -676,25 +709,32 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
             beatProgress = 1.0;
         }
         
-        // More pronounced pulse as the cube gets closer
-        if (beatProgress > 0) {
-            const pulseIntensity = Math.max(0.5, Math.min(1.5, 0.5 + Math.sin(beatProgress * Math.PI * 2) * 0.5));
-            cube.scale.set(
-                cube.userData.initialScale * pulseIntensity,
-                cube.userData.initialScale * pulseIntensity,
-                cube.userData.initialScale * pulseIntensity
-            );
+        // Only apply pulse and glow effects if cube is visible enough
+        if (opacity > 0.1) {
+            // More pronounced pulse as the cube gets closer
+            if (beatProgress > 0) {
+                const pulseIntensity = Math.max(0.5, Math.min(1.5, 0.5 + Math.sin(beatProgress * Math.PI * 2) * 0.5));
+                cube.scale.set(
+                    cube.userData.initialScale * pulseIntensity,
+                    cube.userData.initialScale * pulseIntensity,
+                    cube.userData.initialScale * pulseIntensity
+                );
+                
+                // Increase glow as it gets closer, max out at passing point
+                cube.material.emissiveIntensity = Math.min(2.0, 0.5 + beatProgress * 1.5) * opacity;
+            }
             
-            // Increase glow as it gets closer, max out at passing point
-            cube.material.emissiveIntensity = Math.min(2.0, 0.5 + beatProgress * 1.5);
-        }
-        
-        // Add collection zone indicator
-        const distToPlayer = Math.abs(cube.position.z);
-        if (distToPlayer < rhythmGame.collectDistance * 2) {
-            // Highlight cube when it's close to collection zone
-            const glowIntensity = 1.5 + Math.sin(currentTime * 0.01) * 0.5;
-            cube.material.emissiveIntensity = glowIntensity;
+            // Add collection zone indicator
+            const distToPlayer = Math.abs(cube.position.z);
+            if (distToPlayer < rhythmGame.collectDistance * 2) {
+                // Highlight cube when it's close to collection zone
+                const glowIntensity = 1.5 + Math.sin(currentTime * 0.01) * 0.5;
+                cube.material.emissiveIntensity = glowIntensity * opacity;
+            }
+        } else {
+            // Set minimal scale when faded out to avoid popping
+            cube.scale.set(1, 1, 1);
+            cube.material.emissiveIntensity = 0.1;
         }
         
         // Check if cube has passed too far behind the vehicle and wasn't collected

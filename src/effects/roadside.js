@@ -13,6 +13,7 @@ const roadsideConfig = {
     lastSpawnPoint: 0, // Last spawn point
     pulseIntensity: 1.8, // Maximum intensity for pulsing effect
     fadeDistance: 120, // Distance at which objects start to fade
+    fadeInDistance: 180, // Distance at which objects begin to appear
     basePulseSpeed: 0.5, // Base speed of pulsing effect
     lastBeatTime: 0, // Last detected beat time
     beatThreshold: 0.6, // Threshold for beat detection
@@ -557,6 +558,23 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
             // Fade out objects that are too far
             opacity = 1 - ((distanceFromPlayer - roadsideConfig.fadeDistance) / 30);
             opacity = Math.max(0, opacity);
+        } else if (distanceFromPlayer > roadsideConfig.fadeDistance * 0.8) {
+            // Full opacity in optimal range
+            opacity = 1.0;
+        } else {
+            // Fade in objects that are approaching from far away
+            const fadeInStart = roadsideConfig.fadeInDistance;
+            if (distanceFromPlayer > fadeInStart) {
+                // Complete fade out when very distant
+                opacity = 0.0;
+            } else {
+                // Gradually fade in as objects get closer
+                opacity = 1.0 - (distanceFromPlayer / fadeInStart);
+                opacity = Math.max(0, Math.min(1, opacity));
+                
+                // Apply easing function for smoother appearance (cubic easing)
+                opacity = opacity * opacity * (3 - 2 * opacity);
+            }
         }
         
         // Apply pulsing and jumping effect based on music energy and object type
@@ -629,6 +647,9 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
             pulseValue = Math.sin(object.userData.currentPulse * Math.PI * 2) * 0.3 + 0.7;
         }
         
+        // Apply opacity from distance fading to all effects
+        pulseValue = pulseValue * opacity;
+        
         // Apply pulse effect to object
         if (object.material) {
             // For simple objects with one material
@@ -654,13 +675,19 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
         // Special handling for wireframes
         if (object.wireframe) {
             object.wireframe.material.color.copy(color);
-            object.wireframe.material.opacity = opacity * pulseValue;
+            object.wireframe.material.opacity = opacity;
         }
         
         // Scale effect based on pulse for some objects (avoid scaling arches)
         if (object.userData.type === 'wireframe' || object.userData.type === 'pillar') {
-            const scale = 1 + (pulseValue * 0.3); // Increased scale effect
-            object.scale.set(scale, scale, scale); // Scale in all directions for more bounce
+            const scale = 1 + (pulseValue * 0.3);
+            // Only apply scale if object is visible enough
+            if (opacity > 0.2) {
+                object.scale.set(scale, scale, scale);
+            } else {
+                // Keep minimal scale when faded out to avoid popping
+                object.scale.set(1, 1, 1);
+            }
         }
     }
 }
