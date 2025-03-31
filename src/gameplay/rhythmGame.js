@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getAnalyzerData } from '../audio/audioManager.js';
+import { vehicleControls } from '../engine/input.js';
 
 // Rhythm game system
 const rhythmGame = {
@@ -19,7 +20,23 @@ const rhythmGame = {
     bpm: 130,
     beatsAhead: 4, // Reduced from 16 to 4 to spawn fewer cubes at once
     lanePositions: [], // Will store the world positions of the lanes
-    passPoint: 0 // Point where cube passes the vehicle (0 = at vehicle position)
+    passPoint: 0, // Point where cube passes the vehicle (0 = at vehicle position)
+    isFastTempo: false, // Track if we're in a fast tempo section
+    beatCooldown: 250, // Minimum time between beats (ms)
+    fastBeatCooldown: 125, // Cooldown for fast tempo sections (ms)
+    energyHistory: [], // Store recent energy values to detect tempo changes
+    score: 0, // Player's score
+    multiplier: 1, // Score multiplier
+    maxMultiplier: 8, // Maximum multiplier
+    multiplierProgress: 0, // Progress towards next multiplier
+    multiplierThreshold: 5, // Number of cubes needed to increase multiplier
+    collectDistance: 2.5, // Distance at which cubes can be collected
+    cubesCollected: 0, // Total cubes collected
+    particlePool: [], // Pool for particle effects
+    particlePoolSize: 20, // Number of particle systems to pre-create
+    laneSpawnStatus: [0, 0, 0], // Track when each lane last had a cube spawned
+    minLaneSpawnInterval: 1000, // Minimum time between spawns in the same lane (ms)
+    spawnHistory: {} // Track spawn times for each beat time to avoid overlaps
 };
 
 // Create a cube for the rhythm game with neon style
@@ -45,7 +62,10 @@ function createRhythmCube(scene) {
         active: false,
         lane: 0,
         beatTime: 0,
-        initialScale: 1
+        initialScale: 1,
+        collectible: true, // Flag to track if the cube can be collected
+        collected: false, // Flag to track if the cube has been collected
+        scoreValue: 100 // Base score value
     };
     
     // Add glowing edges
@@ -61,6 +81,165 @@ function createRhythmCube(scene) {
     
     scene.add(cube);
     return cube;
+}
+
+// Create particle effect system for cube collection
+function createParticleSystem(scene) {
+    // Create particle geometry
+    const particleCount = 30;
+    const particles = new THREE.BufferGeometry();
+    
+    // Create array to hold positions
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    // Initialize particles at center
+    for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] = 0;
+        positions[i * 3 + 1] = 0;
+        positions[i * 3 + 2] = 0;
+        
+        // Set random colors in the particle
+        colors[i * 3] = Math.random();
+        colors[i * 3 + 1] = Math.random();
+        colors[i * 3 + 2] = Math.random();
+    }
+    
+    // Add attributes to geometry
+    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    // Create particle material
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 0.2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1.0
+    });
+    
+    // Create particle system
+    const particleSystem = new THREE.Points(particles, particleMaterial);
+    particleSystem.visible = false;
+    
+    // Add particle system to scene
+    scene.add(particleSystem);
+    
+    // Store particle data for animation
+    particleSystem.userData = {
+        active: false,
+        positions: positions,
+        particleCount: particleCount,
+        startTime: 0,
+        duration: 1000, // ms
+        speed: 2.0,
+        baseColor: new THREE.Color(1, 1, 1) // Will be set based on cube color
+    };
+    
+    return particleSystem;
+}
+
+// Trigger particle effect at position
+function triggerParticleEffect(scene, position, color) {
+    // Find an available particle system
+    let particleSystem = null;
+    
+    for (const system of rhythmGame.particlePool) {
+        if (!system.userData.active) {
+            particleSystem = system;
+            break;
+        }
+    }
+    
+    // If no available system, create a new one
+    if (!particleSystem) {
+        if (rhythmGame.particlePool.length < rhythmGame.particlePoolSize) {
+            particleSystem = createParticleSystem(scene);
+            rhythmGame.particlePool.push(particleSystem);
+        } else {
+            // If all are in use, use the oldest one
+            particleSystem = rhythmGame.particlePool[0];
+        }
+    }
+    
+    // Activate particle system
+    particleSystem.visible = true;
+    particleSystem.userData.active = true;
+    particleSystem.userData.startTime = performance.now();
+    particleSystem.userData.baseColor.copy(color);
+    
+    // Set initial position to the cube position
+    particleSystem.position.copy(position);
+    
+    // Reset all particle positions to center
+    const positions = particleSystem.userData.positions;
+    const colors = particleSystem.geometry.attributes.color.array;
+    
+    for (let i = 0; i < particleSystem.userData.particleCount; i++) {
+        positions[i * 3] = 0;
+        positions[i * 3 + 1] = 0;
+        positions[i * 3 + 2] = 0;
+        
+        // Set color based on the cube's color
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+    }
+    
+    particleSystem.geometry.attributes.position.needsUpdate = true;
+    particleSystem.geometry.attributes.color.needsUpdate = true;
+    
+    return particleSystem;
+}
+
+// Update particle effect animation
+function updateParticleEffects(currentTime) {
+    rhythmGame.particlePool.forEach(particles => {
+        if (particles.userData.active) {
+            const elapsed = currentTime - particles.userData.startTime;
+            const duration = particles.userData.duration;
+            
+            // If effect is complete, deactivate
+            if (elapsed > duration) {
+                particles.userData.active = false;
+                particles.visible = false;
+                return;
+            }
+            
+            // Calculate particle progress (0.0 to 1.0)
+            const progress = elapsed / duration;
+            
+            // Update positions to create explosion effect
+            const positions = particles.userData.positions;
+            const pCount = particles.userData.particleCount;
+            const speed = particles.userData.speed;
+            
+            for (let i = 0; i < pCount; i++) {
+                // Calculate direction for this particle if it hasn't moved yet
+                if (positions[i * 3] === 0 && positions[i * 3 + 1] === 0 && positions[i * 3 + 2] === 0) {
+                    // Random direction in sphere
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI;
+                    const r = Math.random();
+                    
+                    // Convert to Cartesian coordinates
+                    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                    positions[i * 3 + 2] = r * Math.cos(phi);
+                }
+                
+                // Move particle outward
+                positions[i * 3] *= (1 + speed * progress);
+                positions[i * 3 + 1] *= (1 + speed * progress);
+                positions[i * 3 + 2] *= (1 + speed * progress);
+            }
+            
+            // Update fade based on progress
+            particles.material.opacity = 1.0 - progress;
+            
+            // Update geometry
+            particles.geometry.attributes.position.needsUpdate = true;
+        }
+    });
 }
 
 // Initialize the rhythm game system
@@ -87,6 +266,19 @@ function initRhythmGameSystem(scene, laneWidth) {
     rhythmGame.beatInterval = 60000 / rhythmGame.bpm;
     
     console.log(`Rhythm game initialized with BPM: ${rhythmGame.bpm}, beat interval: ${rhythmGame.beatInterval}ms`);
+    
+    // Create particle effect pool
+    rhythmGame.particlePool = [];
+    for (let i = 0; i < rhythmGame.particlePoolSize; i++) {
+        const particles = createParticleSystem(scene);
+        rhythmGame.particlePool.push(particles);
+    }
+    
+    // Initialize scoring
+    rhythmGame.score = 0;
+    rhythmGame.multiplier = 1;
+    rhythmGame.multiplierProgress = 0;
+    rhythmGame.cubesCollected = 0;
     
     return rhythmGame;
 }
@@ -137,6 +329,26 @@ function returnCubeToPool(cube) {
 
 // Spawn a beat cube at the given lane with neon colors
 function spawnBeatCube(scene, lane, beatTime) {
+    // Check if we have a cube too close in time in this lane
+    const now = performance.now();
+    
+    // Don't spawn if this lane has had a cube spawned recently
+    if (now - rhythmGame.laneSpawnStatus[lane] < rhythmGame.minLaneSpawnInterval) {
+        return null;
+    }
+    
+    // Don't spawn if there's a cube too close in time to this beat time
+    const beatTimeStr = Math.floor(beatTime / 100).toString();
+    if (rhythmGame.spawnHistory[beatTimeStr]) {
+        const conflict = rhythmGame.spawnHistory[beatTimeStr]
+            .find(spawn => Math.abs(spawn.beatTime - beatTime) < 300);
+        
+        if (conflict) {
+            return null;
+        }
+    }
+    
+    // Get a cube from the pool
     const cube = getPooledCube(scene);
     
     // Get lane position
@@ -173,11 +385,170 @@ function spawnBeatCube(scene, lane, beatTime) {
         cube.wireframe.material.color.setRGB(0.5, 0, 1);
     }
     
+    // Store spawn data
+    rhythmGame.laneSpawnStatus[lane] = now;
+    
+    // Track spawn history to avoid overlaps
+    if (!rhythmGame.spawnHistory[beatTimeStr]) {
+        rhythmGame.spawnHistory[beatTimeStr] = [];
+    }
+    
+    rhythmGame.spawnHistory[beatTimeStr].push({
+        lane: lane,
+        beatTime: beatTime
+    });
+    
+    // Clean up old spawn history entries
+    const oldEntries = Object.keys(rhythmGame.spawnHistory)
+        .filter(key => now - parseInt(key) * 100 > 10000);
+    
+    oldEntries.forEach(key => delete rhythmGame.spawnHistory[key]);
+    
     return cube;
 }
 
+// Collect a cube and trigger effects
+function collectCube(scene, cube) {
+    if (!cube.userData.collectible || cube.userData.collected) {
+        return;
+    }
+    
+    // Mark as collected
+    cube.userData.collected = true;
+    
+    // Get the cube's color
+    const cubeColor = cube.material.emissive.clone();
+    
+    // Trigger particle effect
+    triggerParticleEffect(scene, cube.position.clone(), cubeColor);
+    
+    // Calculate score with multiplier
+    const baseScore = cube.userData.scoreValue;
+    const scoreGained = baseScore * rhythmGame.multiplier;
+    
+    // Add to score
+    rhythmGame.score += scoreGained;
+    rhythmGame.cubesCollected++;
+    
+    // Update multiplier progress
+    rhythmGame.multiplierProgress++;
+    if (rhythmGame.multiplierProgress >= rhythmGame.multiplierThreshold) {
+        rhythmGame.multiplierProgress = 0;
+        if (rhythmGame.multiplier < rhythmGame.maxMultiplier) {
+            rhythmGame.multiplier *= 2;
+        }
+    }
+    
+    // Create floating score text
+    createFloatingScore(scene, cube.position, scoreGained);
+    
+    // Return cube to pool
+    returnCubeToPool(cube);
+    
+    // Return score gained
+    return scoreGained;
+}
+
+// Create floating score text
+function createFloatingScore(scene, position, score) {
+    // Create canvas to render text
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    
+    const context = canvas.getContext('2d');
+    context.fillStyle = 'rgba(0, 0, 0, 0)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Add score text
+    context.font = 'bold 32px Arial';
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(`+${score}`, canvas.width / 2, canvas.height / 2);
+    
+    // Create sprite material
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 1.0
+    });
+    
+    // Create sprite
+    const sprite = new THREE.Sprite(material);
+    sprite.position.copy(position);
+    sprite.position.y += 1; // Slightly above cube
+    sprite.scale.set(3, 1.5, 1);
+    
+    // Add to scene
+    scene.add(sprite);
+    
+    // Animate and remove after duration
+    const startTime = performance.now();
+    const duration = 1000; // ms
+    
+    // Store animation data
+    sprite.userData = {
+        startTime: startTime,
+        duration: duration
+    };
+    
+    // Add to animation array
+    if (!scene.floatingScores) {
+        scene.floatingScores = [];
+    }
+    scene.floatingScores.push(sprite);
+}
+
+// Update floating score animations
+function updateFloatingScores(scene, currentTime) {
+    if (!scene.floatingScores) return;
+    
+    for (let i = scene.floatingScores.length - 1; i >= 0; i--) {
+        const sprite = scene.floatingScores[i];
+        const elapsed = currentTime - sprite.userData.startTime;
+        
+        if (elapsed > sprite.userData.duration) {
+            // Remove from scene
+            scene.remove(sprite);
+            scene.floatingScores.splice(i, 1);
+        } else {
+            // Animate position and opacity
+            const progress = elapsed / sprite.userData.duration;
+            
+            // Move upward
+            sprite.position.y += 0.02;
+            
+            // Fade out
+            sprite.material.opacity = 1.0 - progress;
+        }
+    }
+}
+
+// Check for cube collisions with the vehicle
+function checkCubeCollisions(vehicle) {
+    if (!vehicle) return;
+    
+    const vehiclePosition = vehicle.group.position.clone();
+    const collectDistance = rhythmGame.collectDistance;
+    
+    rhythmGame.activeCubes.forEach(cube => {
+        if (!cube.userData.collected && cube.userData.collectible) {
+            // Check if cube is within collection range
+            const distance = Math.abs(cube.position.z - vehiclePosition.z);
+            const xDistance = Math.abs(cube.position.x - vehiclePosition.x);
+            
+            // Check distance and lane alignment
+            if (distance < collectDistance && xDistance < rhythmGame.laneWidth * 0.5) {
+                collectCube(cube.parent, cube);
+            }
+        }
+    });
+}
+
 // Process rhythm game beat detection and cube spawning
-function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene) {
+function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) {
     if (!rhythmGame.enabled || !musicPlaying) return;
     
     // Get frequency data for beat detection
@@ -192,25 +563,80 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene) {
     bassEnergy /= (rhythmGame.beatDetectionFrequencyRange[1] - rhythmGame.beatDetectionFrequencyRange[0] + 1);
     bassEnergy /= 255; // Normalize to 0-1
     
+    // Store energy in history for tempo detection
+    rhythmGame.energyHistory.push(bassEnergy);
+    if (rhythmGame.energyHistory.length > 30) { // Keep last 30 samples
+        rhythmGame.energyHistory.shift();
+    }
+    
+    // Detect tempo changes - count peaks in recent history
+    if (rhythmGame.energyHistory.length > 20) {
+        let peakCount = 0;
+        let inPeak = false;
+        
+        for (let i = 1; i < rhythmGame.energyHistory.length; i++) {
+            const current = rhythmGame.energyHistory[i];
+            const previous = rhythmGame.energyHistory[i-1];
+            
+            // Detect start of a peak
+            if (!inPeak && current > previous && current > rhythmGame.beatDetectionThreshold) {
+                inPeak = true;
+                peakCount++;
+            }
+            // Detect end of peak
+            else if (inPeak && current < previous) {
+                inPeak = false;
+            }
+        }
+        
+        // Determine if we're in a fast tempo section
+        const isFastTempo = peakCount >= 5; // Threshold for fast tempo
+        
+        // Only change if tempo state changes
+        if (isFastTempo !== rhythmGame.isFastTempo) {
+            console.log(`Rhythm game tempo changed to ${isFastTempo ? 'fast' : 'normal'}`);
+            rhythmGame.isFastTempo = isFastTempo;
+        }
+    }
+    
+    // Set beat cooldown based on tempo
+    const minBeatInterval = rhythmGame.isFastTempo ? 
+                          rhythmGame.fastBeatCooldown : 
+                          rhythmGame.beatCooldown;
+    
     // Beat detection
     const timeSinceLastBeat = currentTime - rhythmGame.lastBeatTime;
-    const minBeatInterval = rhythmGame.beatInterval * 0.8; // Increased from 0.5 to 0.8 to further reduce frequency
     
     if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
         rhythmGame.lastBeatTime = currentTime;
         
         // Only spawn one cube per beat, randomly selecting a lane
         const lane = Math.floor(Math.random() * rhythmGame.lanes);
-        const beatTime = currentTime + (rhythmGame.beatInterval * 4); // Increased from 2 to 4 for slower approach
+        const beatTime = currentTime + (rhythmGame.beatInterval * 4);
         spawnBeatCube(scene, lane, beatTime);
         
-        // Only occasionally spawn additional cubes (1 in 3 chance)
-        if (Math.random() < 0.3) {
-            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes; // Different lane
-            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5); // Slightly offset timing
+        // In fast tempo, spawn more cubes
+        if (rhythmGame.isFastTempo && Math.random() < 0.6) {
+            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
+            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
+            spawnBeatCube(scene, additionalLane, additionalBeatTime);
+        }
+        // Normal tempo - less cubes
+        else if (Math.random() < 0.3) {
+            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
+            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
             spawnBeatCube(scene, additionalLane, additionalBeatTime);
         }
     }
+    
+    // Update particle effects
+    updateParticleEffects(currentTime);
+    
+    // Update floating scores
+    updateFloatingScores(scene, currentTime);
+    
+    // Check for cube collection
+    checkCubeCollisions(vehicle);
     
     // Update existing cubes
     for (let i = rhythmGame.activeCubes.length - 1; i >= 0; i--) {
@@ -263,16 +689,47 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene) {
             cube.material.emissiveIntensity = Math.min(2.0, 0.5 + beatProgress * 1.5);
         }
         
-        // Check if cube has passed too far behind the vehicle
-        if (distanceFromVehicle < -rhythmGame.despawnDistance) {
+        // Add collection zone indicator
+        const distToPlayer = Math.abs(cube.position.z);
+        if (distToPlayer < rhythmGame.collectDistance * 2) {
+            // Highlight cube when it's close to collection zone
+            const glowIntensity = 1.5 + Math.sin(currentTime * 0.01) * 0.5;
+            cube.material.emissiveIntensity = glowIntensity;
+        }
+        
+        // Check if cube has passed too far behind the vehicle and wasn't collected
+        if (distanceFromVehicle < -rhythmGame.despawnDistance && !cube.userData.collected) {
+            // Reset multiplier when missing a cube
+            rhythmGame.multiplier = 1;
+            rhythmGame.multiplierProgress = 0;
+            
             returnCubeToPool(cube);
         }
     }
+    
+    return {
+        score: rhythmGame.score,
+        multiplier: rhythmGame.multiplier,
+        multiplierProgress: rhythmGame.multiplierProgress,
+        threshold: rhythmGame.multiplierThreshold
+    };
+}
+
+// Get the current score and multiplier
+function getScoreInfo() {
+    return {
+        score: rhythmGame.score,
+        multiplier: rhythmGame.multiplier,
+        multiplierProgress: rhythmGame.multiplierProgress,
+        threshold: rhythmGame.multiplierThreshold,
+        cubesCollected: rhythmGame.cubesCollected
+    };
 }
 
 export { 
     initRhythmGameSystem, 
     updateRhythmGame, 
     spawnBeatCube, 
-    rhythmGame 
+    rhythmGame,
+    getScoreInfo
 }; 

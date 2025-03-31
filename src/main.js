@@ -12,10 +12,13 @@ import { setupAudio, updateEngineSound, musicPlaying } from './audio/audioManage
 
 // Import gameplay modules
 import { createVehicle } from './gameplay/vehicle.js';
-import { initRhythmGameSystem, updateRhythmGame, rhythmGame } from './gameplay/rhythmGame.js';
+import { initRhythmGameSystem, updateRhythmGame, rhythmGame, getScoreInfo } from './gameplay/rhythmGame.js';
 
 // Import effects modules
 import { initRoadsideObjects, updateRoadsideObjects } from './effects/roadside.js';
+
+// Import UI modules
+import { initScoreDisplay } from './ui/scoreDisplay.js';
 
 // Import utility modules
 import { Clock } from './utils/utils.js';
@@ -60,6 +63,10 @@ setupVehicleControls();
 // Set up window resize handler
 setupResizeHandler(renderer, camera);
 
+// Initialize UI
+const scoreDisplay = initScoreDisplay();
+scoreDisplay.hide(); // Hide until rhythm game starts
+
 // Initialize debug info panels
 const stats = createStatsPanel();
 const sceneInfo = createSceneInfoPanel(renderer, scene, camera);
@@ -73,7 +80,51 @@ function initRhythmGame() {
     
     rhythmGameSystem = initRhythmGameSystem(scene, vehicleControls.laneWidth);
     console.log('Rhythm game system initialized');
+    
+    // Show score display when rhythm game is initialized
+    scoreDisplay.show();
 }
+
+// Add instructions for cube collection
+function showGameInstructions() {
+    const instructionsElement = document.createElement('div');
+    instructionsElement.id = 'game-instructions';
+    instructionsElement.style.position = 'absolute';
+    instructionsElement.style.bottom = '20px';
+    instructionsElement.style.left = '50%';
+    instructionsElement.style.transform = 'translateX(-50%)';
+    instructionsElement.style.background = 'rgba(0, 0, 0, 0.7)';
+    instructionsElement.style.color = '#00ffff';
+    instructionsElement.style.padding = '15px 30px';
+    instructionsElement.style.borderRadius = '5px';
+    instructionsElement.style.fontFamily = "'Orbitron', sans-serif";
+    instructionsElement.style.fontSize = '18px';
+    instructionsElement.style.textAlign = 'center';
+    instructionsElement.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.5)';
+    instructionsElement.style.zIndex = '1000';
+    instructionsElement.style.transition = 'opacity 2s';
+    
+    instructionsElement.innerHTML = `
+        <div style="font-size: 24px; margin-bottom: 10px; color: #ff00ff; text-shadow: 0 0 10px #ff00ff;">COLLECT THE RHYTHM CUBES</div>
+        <div>Use <span style="color: #ff00ff">←</span> and <span style="color: #ff00ff">→</span> arrow keys to change lanes</div>
+        <div>Drive through cubes to collect them and increase your score!</div>
+    `;
+    
+    document.body.appendChild(instructionsElement);
+    
+    // Fade out instructions after 5 seconds
+    setTimeout(() => {
+        instructionsElement.style.opacity = '0';
+        setTimeout(() => {
+            if (instructionsElement.parentNode) {
+                instructionsElement.parentNode.removeChild(instructionsElement);
+            }
+        }, 2000);
+    }, 5000);
+}
+
+// Show game instructions once
+setTimeout(showGameInstructions, 2000);
 
 // Animation loop
 function animate() {
@@ -92,23 +143,89 @@ function animate() {
     // Update third-person camera to follow vehicle
     updateThirdPersonCamera(camera, vehiclePosition);
     
+    // Animate vehicle thrusters
+    if (vehicle.thrusters) {
+        vehicle.thrusters.forEach(thruster => {
+            // Pulse the thrusters based on speed and time
+            const pulseFactor = (Math.sin(elapsedTime * 0.01) * 0.3 + 0.7) * 
+                               (vehicleControls.speed / vehicleControls.maxSpeed + 0.3);
+            
+            thruster.material.emissiveIntensity = pulseFactor * 1.5;
+            
+            // Add scale effect to thrusters when accelerating
+            const scaleEffect = 1 + (vehicleControls.speed / vehicleControls.maxSpeed) * 0.2;
+            thruster.scale.set(1, scaleEffect, 1);
+        });
+    }
+    
     // Update endless runner track
     const distance = updateEndlessRunner(deltaTime);
-    
-    // Update roadside objects
-    updateRoadsideObjects(scene, deltaTime, endlessRunner, musicPlaying);
-    
-    // Update engine sound based on vehicle speed
-    updateEngineSound(vehicleControls.speed, vehicleControls.maxSpeed);
     
     // Initialize rhythm game when music is playing
     if (musicPlaying && !rhythmGameSystem) {
         initRhythmGame();
     }
     
-    // Update rhythm game
+    // First update rhythm game to detect beats and check for cube collection
     if (rhythmGameSystem) {
-        updateRhythmGame(deltaTime, elapsedTime, musicPlaying, scene);
+        const scoreInfo = updateRhythmGame(deltaTime, elapsedTime, musicPlaying, scene, vehicle);
+        
+        // Update score display with latest info
+        if (scoreInfo) {
+            scoreDisplay.update(scoreInfo);
+            scoreDisplay.animateScore(elapsedTime);
+        }
+    }
+    
+    // Then update roadside objects which will use the latest beat detection
+    updateRoadsideObjects(scene, deltaTime, endlessRunner, musicPlaying);
+    
+    // Update engine sound based on vehicle speed
+    updateEngineSound(vehicleControls.speed, vehicleControls.maxSpeed);
+    
+    // Make vehicle glow more intensely on beats if rhythm game is active
+    if (rhythmGameSystem && rhythmGame.lastBeatTime > 0) {
+        const timeSinceBeat = elapsedTime - rhythmGame.lastBeatTime;
+        
+        // Briefly increase body glow on beat with smooth falloff
+        if (timeSinceBeat < 150) {
+            // Calculate falloff (1.0 to 0.0)
+            const falloff = 1.0 - (timeSinceBeat / 150);
+            
+            // Apply to vehicle components
+            if (vehicle.body) {
+                vehicle.body.material.emissiveIntensity = 0.8 + (falloff * 0.7);
+            }
+            
+            // Flash taillights with rhythm
+            if (vehicle.taillights) {
+                vehicle.taillights.forEach(light => {
+                    light.material.emissiveIntensity = 1.0 + (falloff * 1.0);
+                });
+            }
+            
+            // Pulse headlight cones
+            if (vehicle.thrusters) {
+                vehicle.thrusters.forEach(thruster => {
+                    thruster.material.emissiveIntensity = 1.0 + (falloff * 1.5);
+                    // Scale effect
+                    const scale = 1.0 + (falloff * 0.3);
+                    thruster.scale.set(scale, scale, 1);
+                });
+            }
+        } else {
+            // Return to normal glow
+            if (vehicle.body) {
+                vehicle.body.material.emissiveIntensity = 0.8;
+            }
+            
+            // Normal taillight intensity
+            if (vehicle.taillights) {
+                vehicle.taillights.forEach(light => {
+                    light.material.emissiveIntensity = 1.0;
+                });
+            }
+        }
     }
     
     // Update debug info panel

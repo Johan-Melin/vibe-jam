@@ -11,9 +11,25 @@ const roadsideConfig = {
     activeObjects: [], // Currently active objects
     traversedDistance: 0, // Distance tracker
     lastSpawnPoint: 0, // Last spawn point
-    pulseIntensity: 1.5, // Maximum intensity for pulsing effect
+    pulseIntensity: 1.8, // Maximum intensity for pulsing effect
     fadeDistance: 120, // Distance at which objects start to fade
     basePulseSpeed: 0.5, // Base speed of pulsing effect
+    lastBeatTime: 0, // Last detected beat time
+    beatThreshold: 0.6, // Threshold for beat detection
+    beatCooldown: 250, // Minimum time between beats (ms)
+    fastBeatCooldown: 125, // Cooldown for fast portions (ms)
+    isFastTempo: false, // Track if we're in a fast section
+    tempoTransitionTime: 2000, // Time to transition between tempos (ms)
+    lastColorChangeTime: 0, // Track when we last changed colors
+    colorPalette: [ // Match the three beat cube colors
+        new THREE.Color(1, 0, 0.7),  // Magenta (left lane)
+        new THREE.Color(0, 1, 1),    // Cyan (center lane)
+        new THREE.Color(0.5, 0, 1)   // Purple (right lane)
+    ],
+    currentColorIndex: 0, // Track current color to cycle
+    jumpDuration: 0.5,    // Duration of jump animation in seconds
+    tempoEnergyHistory: [], // Track energy levels to detect tempo changes
+    energyHistorySize: 30  // Number of samples to track for tempo detection
 };
 
 // Create a neon wireframe object
@@ -35,7 +51,7 @@ function createWireframePyramid(height = 10) {
     // Add glowing wireframe
     const edges = new THREE.EdgesGeometry(geometry);
     const edgeMaterial = new THREE.LineBasicMaterial({
-        color: 0x00ffff,
+        color: roadsideConfig.colorPalette[0],
         linewidth: 2,
         transparent: true,
         opacity: 0.9
@@ -45,13 +61,21 @@ function createWireframePyramid(height = 10) {
     pyramid.add(wireframe);
     pyramid.wireframe = wireframe;
     
-    // Store original colors for pulsing effect
+    // Store original colors and animation data
+    const colorIndex = Math.floor(Math.random() * roadsideConfig.colorPalette.length);
     pyramid.userData = {
-        baseColor: new THREE.Color(0x00ffff),
+        baseColor: roadsideConfig.colorPalette[colorIndex].clone(),
+        colorIndex: colorIndex,
         currentPulse: 0,
         pulseDirection: 1,
         pulseSpeed: roadsideConfig.basePulseSpeed,
-        type: 'wireframe'
+        type: 'wireframe',
+        jumpHeight: 0,
+        jumpPhase: Math.random() * Math.PI * 2,
+        lastJumpTime: 0,
+        isJumping: false,
+        jumpProgress: 0,
+        originalY: 0 // Will be set on placement
     };
     
     return pyramid;
@@ -62,10 +86,14 @@ function createNeonPillar(height = 15) {
     // Create a cylinder geometry for the pillar
     const geometry = new THREE.CylinderGeometry(0.5, 0.5, height, 8);
     
+    // Choose a random color from the palette
+    const colorIndex = Math.floor(Math.random() * roadsideConfig.colorPalette.length);
+    const color = roadsideConfig.colorPalette[colorIndex].clone();
+    
     // Create the material with glow effect
     const material = new THREE.MeshStandardMaterial({
         color: 0x000000,
-        emissive: 0xff00ff,
+        emissive: color,
         emissiveIntensity: 1,
         transparent: true,
         opacity: 0.9
@@ -80,7 +108,7 @@ function createNeonPillar(height = 15) {
         const ringGeometry = new THREE.TorusGeometry(1, 0.2, 8, 16);
         const ringMaterial = new THREE.MeshStandardMaterial({
             color: 0x000000,
-            emissive: 0xff00ff,
+            emissive: color,
             emissiveIntensity: 1,
             transparent: true,
             opacity: 0.9
@@ -93,13 +121,20 @@ function createNeonPillar(height = 15) {
         pillar.add(ring);
     }
     
-    // Store original colors for pulsing effect
+    // Store original colors and animation data
     pillar.userData = {
-        baseColor: new THREE.Color(0xff00ff),
+        baseColor: color,
+        colorIndex: colorIndex,
         currentPulse: 0,
         pulseDirection: 1,
         pulseSpeed: roadsideConfig.basePulseSpeed * 0.8,
-        type: 'pillar'
+        type: 'pillar',
+        jumpHeight: 0,
+        jumpPhase: Math.random() * Math.PI * 2,
+        lastJumpTime: 0,
+        isJumping: false,
+        jumpProgress: 0,
+        originalY: 0 // Will be set on placement
     };
     
     return pillar;
@@ -118,10 +153,14 @@ function createNeonArch(width = 14, height = 10) {
         new THREE.Vector3(width/2, 0, 0)
     ]);
     
+    // Choose a random color from the palette
+    const colorIndex = Math.floor(Math.random() * roadsideConfig.colorPalette.length);
+    const color = roadsideConfig.colorPalette[colorIndex].clone();
+    
     const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.3, 8, false);
     const tubeMaterial = new THREE.MeshStandardMaterial({
         color: 0x000000,
-        emissive: 0x00ff77,
+        emissive: color,
         emissiveIntensity: 1,
         transparent: true,
         opacity: 0.9
@@ -138,7 +177,7 @@ function createNeonArch(width = 14, height = 10) {
         
         const lightGeometry = new THREE.SphereGeometry(0.2, 8, 8);
         const lightMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ff77,
+            color: color,
             transparent: true,
             opacity: 0.9
         });
@@ -148,13 +187,20 @@ function createNeonArch(width = 14, height = 10) {
         archGroup.add(light);
     }
     
-    // Store original colors for pulsing effect
+    // Store original colors and animation data
     archGroup.userData = {
-        baseColor: new THREE.Color(0x00ff77),
+        baseColor: color,
+        colorIndex: colorIndex,
         currentPulse: 0,
         pulseDirection: 1,
         pulseSpeed: roadsideConfig.basePulseSpeed * 1.2,
-        type: 'arch'
+        type: 'arch',
+        jumpHeight: 0,
+        jumpPhase: Math.random() * Math.PI * 2,
+        lastJumpTime: 0,
+        isJumping: false,
+        jumpProgress: 0,
+        originalY: 0 // Will be set on placement
     };
     
     return archGroup;
@@ -165,11 +211,15 @@ function createBillboard(width = 8, height = 6) {
     // Create a group to hold all parts
     const billboardGroup = new THREE.Group();
     
+    // Choose a random color from the palette
+    const colorIndex = Math.floor(Math.random() * roadsideConfig.colorPalette.length);
+    const color = roadsideConfig.colorPalette[colorIndex].clone();
+    
     // Create the frame
     const frameGeometry = new THREE.BoxGeometry(width, height, 0.5);
     const frameMaterial = new THREE.MeshStandardMaterial({
         color: 0x000000,
-        emissive: 0x0033ff,
+        emissive: color,
         emissiveIntensity: 0.5,
         transparent: true,
         opacity: 0.8
@@ -191,8 +241,11 @@ function createBillboard(width = 8, height = 6) {
     context.fillStyle = 'black';
     context.fillRect(0, 0, 256, 256);
     
+    // Convert THREE color to CSS color string
+    const cssColor = `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
+    
     // Draw some neon lines
-    context.strokeStyle = '#0077ff';
+    context.strokeStyle = cssColor;
     context.lineWidth = 4;
     for (let i = 0; i < 10; i++) {
         const y = i * 25;
@@ -220,14 +273,21 @@ function createBillboard(width = 8, height = 6) {
     billboardGroup.screen = screen;
     billboardGroup.texture = texture;
     
-    // Store original colors for pulsing effect
+    // Store original colors and animation data
     billboardGroup.userData = {
-        baseColor: new THREE.Color(0x0077ff),
+        baseColor: color,
+        colorIndex: colorIndex,
         currentPulse: 0,
         pulseDirection: 1,
         pulseSpeed: roadsideConfig.basePulseSpeed * 0.7,
         scrollOffset: 0,
-        type: 'billboard'
+        type: 'billboard',
+        jumpHeight: 0,
+        jumpPhase: Math.random() * Math.PI * 2,
+        lastJumpTime: 0,
+        isJumping: false,
+        jumpProgress: 0,
+        originalY: 0 // Will be set on placement
     };
     
     return billboardGroup;
@@ -312,6 +372,61 @@ function returnObjectToPool(object) {
     roadsideConfig.objectPool.push(object);
 }
 
+// Cycle to the next color in the palette when a beat is detected
+function cycleColor() {
+    roadsideConfig.currentColorIndex = (roadsideConfig.currentColorIndex + 1) % roadsideConfig.colorPalette.length;
+    roadsideConfig.lastColorChangeTime = performance.now();
+    return roadsideConfig.colorPalette[roadsideConfig.currentColorIndex];
+}
+
+// Detect tempo changes based on beat frequency
+function updateTempoDetection(bassEnergy) {
+    // Add current energy to history
+    roadsideConfig.tempoEnergyHistory.push(bassEnergy);
+    
+    // Keep history at specified size
+    if (roadsideConfig.tempoEnergyHistory.length > roadsideConfig.energyHistorySize) {
+        roadsideConfig.tempoEnergyHistory.shift();
+    }
+    
+    // Only proceed if we have enough history
+    if (roadsideConfig.tempoEnergyHistory.length < roadsideConfig.energyHistorySize) {
+        return;
+    }
+    
+    // Calculate average energy over last few seconds
+    const avgEnergy = roadsideConfig.tempoEnergyHistory.reduce((sum, e) => sum + e, 0) / 
+                     roadsideConfig.tempoEnergyHistory.length;
+    
+    // Count peaks (beats) in the energy history
+    let peakCount = 0;
+    let inPeak = false;
+    
+    for (let i = 1; i < roadsideConfig.tempoEnergyHistory.length; i++) {
+        const current = roadsideConfig.tempoEnergyHistory[i];
+        const previous = roadsideConfig.tempoEnergyHistory[i-1];
+        
+        // Detect start of a peak
+        if (!inPeak && current > previous && current > roadsideConfig.beatThreshold) {
+            inPeak = true;
+            peakCount++;
+        }
+        // Detect end of peak
+        else if (inPeak && current < previous) {
+            inPeak = false;
+        }
+    }
+    
+    // Determine if we're in a fast tempo section
+    const isFastTempo = peakCount >= roadsideConfig.energyHistorySize / 6; // Threshold for fast tempo
+    
+    // Only change if tempo state changes
+    if (isFastTempo !== roadsideConfig.isFastTempo) {
+        console.log(`Tempo changed to ${isFastTempo ? 'fast' : 'normal'}`);
+        roadsideConfig.isFastTempo = isFastTempo;
+    }
+}
+
 // Update roadside objects based on music and movement
 function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
     const trackDistance = trackData.traversedDistance;
@@ -331,6 +446,11 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
         // Get object from pool
         const object = getPooledObject(scene, objectType);
         
+        // Assign a color from the palette
+        const colorIndex = Math.floor(Math.random() * roadsideConfig.colorPalette.length);
+        object.userData.colorIndex = colorIndex;
+        object.userData.baseColor = roadsideConfig.colorPalette[colorIndex].clone();
+        
         // Set position based on track distance and side
         // For arch type, place it over the road
         if (objectType === 'arch') {
@@ -347,13 +467,20 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
             );
         }
         
+        // Store the original Y position immediately after placement
+        object.userData.originalY = object.position.y;
+        
         // Randomize rotation for variety, except for arches
         if (objectType !== 'arch') {
             object.rotation.y = Math.random() * Math.PI * 2;
         }
         
-        // Reset pulsing effect
+        // Reset animation properties
         object.userData.currentPulse = Math.random(); // Random starting phase
+        object.userData.jumpPhase = Math.random() * Math.PI * 2;
+        object.userData.isJumping = false;
+        object.userData.jumpProgress = 0;
+        object.userData.lastJumpTime = 0;
     }
     
     // Get audio data for reactive effects
@@ -361,6 +488,8 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
     let bassEnergy = 0;
     let midEnergy = 0;
     let trebleEnergy = 0;
+    let beatDetected = false;
+    const currentTime = performance.now();
     
     if (analyzerData) {
         // Calculate energy in different frequency ranges
@@ -372,6 +501,39 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
         
         for (let i = 13; i < 20; i++) trebleEnergy += analyzerData[i];
         trebleEnergy = (trebleEnergy / 7) / 255;
+        
+        // Update tempo detection
+        updateTempoDetection(bassEnergy);
+        
+        // Set beat cooldown based on tempo
+        const beatCooldown = roadsideConfig.isFastTempo ? 
+                           roadsideConfig.fastBeatCooldown : 
+                           roadsideConfig.beatCooldown;
+        
+        // Beat detection with tempo-based cooldown
+        if (bassEnergy > roadsideConfig.beatThreshold && currentTime - roadsideConfig.lastBeatTime > beatCooldown) {
+            roadsideConfig.lastBeatTime = currentTime;
+            beatDetected = true;
+            
+            // Cycle color on beat
+            cycleColor();
+            
+            // Now apply color change to ALL objects on beat
+            roadsideConfig.activeObjects.forEach(object => {
+                // In fast tempo, color changes are less frequent to avoid overwhelming visuals
+                if (!roadsideConfig.isFastTempo || Math.random() < 0.5) {
+                    object.userData.colorIndex = roadsideConfig.currentColorIndex;
+                    object.userData.baseColor = roadsideConfig.colorPalette[roadsideConfig.currentColorIndex].clone();
+                }
+                
+                // Trigger jump animation on beat
+                if (!object.userData.isJumping) {
+                    object.userData.isJumping = true;
+                    object.userData.jumpProgress = 0;
+                    object.userData.lastJumpTime = currentTime;
+                }
+            });
+        }
     }
     
     // Update active objects
@@ -397,35 +559,66 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
             opacity = Math.max(0, opacity);
         }
         
-        // Apply pulsing effect based on music energy and object type
+        // Apply pulsing and jumping effect based on music energy and object type
         let pulseValue = 0;
-        let colorShift = new THREE.Color();
+        const color = roadsideConfig.colorPalette[object.userData.colorIndex].clone();
         
         if (musicPlaying && analyzerData) {
-            // Different objects react to different frequency ranges
-            switch (object.userData.type) {
-                case 'pillar':
-                    pulseValue = bassEnergy * roadsideConfig.pulseIntensity;
-                    colorShift.setRGB(bassEnergy, 0, bassEnergy);
-                    break;
-                case 'wireframe':
-                    pulseValue = midEnergy * roadsideConfig.pulseIntensity;
-                    colorShift.setRGB(0, midEnergy, midEnergy);
-                    break;
-                case 'arch':
-                    pulseValue = trebleEnergy * roadsideConfig.pulseIntensity;
-                    colorShift.setRGB(0, trebleEnergy, trebleEnergy * 0.7);
-                    break;
-                case 'billboard':
-                    pulseValue = midEnergy * roadsideConfig.pulseIntensity * 0.8;
-                    colorShift.setRGB(midEnergy * 0.3, midEnergy * 0.5, midEnergy);
-                    // Update billboard scroll based on music
-                    object.userData.scrollOffset += midEnergy * 0.03;
-                    if (object.texture) {
-                        object.texture.offset.y = object.userData.scrollOffset;
-                        object.texture.needsUpdate = true;
+            // Handle jump animation with smooth transitions
+            if (object.userData.isJumping) {
+                // Calculate jump progress (0 to 1) over jump duration
+                const jumpElapsed = (currentTime - object.userData.lastJumpTime) / 1000; // in seconds
+                object.userData.jumpProgress = Math.min(jumpElapsed / roadsideConfig.jumpDuration, 1);
+                
+                // Apply smooth jump using sin curve (up and down)
+                if (object.userData.jumpProgress < 1) {
+                    // Use sin curve for smooth up and down motion
+                    const jumpHeight = object.userData.type === 'arch' ? 0.5 : 1.5;
+                    const jumpFactor = Math.sin(object.userData.jumpProgress * Math.PI) * jumpHeight;
+                    
+                    // Vary jump height based on object type and bass energy
+                    let typeMultiplier = 1.0;
+                    switch(object.userData.type) {
+                        case 'pillar': typeMultiplier = 0.8; break;
+                        case 'wireframe': typeMultiplier = 1.2; break;
+                        case 'billboard': typeMultiplier = 1.0; break;
                     }
-                    break;
+                    
+                    const finalJumpHeight = jumpFactor * bassEnergy * typeMultiplier;
+                    object.position.y = object.userData.originalY + finalJumpHeight;
+                } else {
+                    // Jump animation complete
+                    object.userData.isJumping = false;
+                    object.position.y = object.userData.originalY;
+                }
+            }
+            
+            // Calculate pulse value based on music
+            if (beatDetected || (currentTime - roadsideConfig.lastBeatTime < 100)) {
+                // Strong pulse on beat
+                pulseValue = bassEnergy * roadsideConfig.pulseIntensity;
+            } else {
+                // Different objects react to different frequency ranges
+                switch (object.userData.type) {
+                    case 'pillar':
+                        pulseValue = bassEnergy * 1.2;
+                        break;
+                    case 'wireframe':
+                        pulseValue = midEnergy * 1.4;
+                        break;
+                    case 'arch':
+                        pulseValue = trebleEnergy * 1.3;
+                        break;
+                    case 'billboard':
+                        pulseValue = midEnergy * 1.2;
+                        // Update billboard scroll based on music
+                        object.userData.scrollOffset += midEnergy * 0.05;
+                        if (object.texture) {
+                            object.texture.offset.y = object.userData.scrollOffset;
+                            object.texture.needsUpdate = true;
+                        }
+                        break;
+                }
             }
         } else {
             // Fallback pulsing when no music
@@ -440,8 +633,7 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
         if (object.material) {
             // For simple objects with one material
             if (object.material.emissive) {
-                const combinedColor = object.userData.baseColor.clone().multiply(colorShift);
-                object.material.emissive.copy(combinedColor);
+                object.material.emissive.copy(color);
                 object.material.emissiveIntensity = pulseValue;
                 object.material.opacity = opacity;
             }
@@ -449,8 +641,7 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
             // For complex objects with multiple parts
             object.children.forEach(child => {
                 if (child.material && child.material.emissive) {
-                    const combinedColor = object.userData.baseColor.clone().multiply(colorShift);
-                    child.material.emissive.copy(combinedColor);
+                    child.material.emissive.copy(color);
                     child.material.emissiveIntensity = pulseValue;
                     child.material.opacity = opacity;
                 }
@@ -462,15 +653,14 @@ function updateRoadsideObjects(scene, deltaTime, trackData, musicPlaying) {
         
         // Special handling for wireframes
         if (object.wireframe) {
-            const wireColor = object.userData.baseColor.clone().multiply(colorShift);
-            object.wireframe.material.color.copy(wireColor);
+            object.wireframe.material.color.copy(color);
             object.wireframe.material.opacity = opacity * pulseValue;
         }
         
-        // Scale effect based on pulse for some objects
+        // Scale effect based on pulse for some objects (avoid scaling arches)
         if (object.userData.type === 'wireframe' || object.userData.type === 'pillar') {
-            const scale = 1 + (pulseValue * 0.2);
-            object.scale.set(scale, 1, scale);
+            const scale = 1 + (pulseValue * 0.3); // Increased scale effect
+            object.scale.set(scale, scale, scale); // Scale in all directions for more bounce
         }
     }
 }
