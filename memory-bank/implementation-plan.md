@@ -75,6 +75,7 @@ Test:
 Reload the browser preview.
 Confirm the cube and ground are lit with visible shadows.
 Check for lighting errors in the console.
+
 Step 7: Create a Simple Vehicle Model
 Instructions:
 
@@ -86,6 +87,7 @@ Test:
 Reload the browser preview.
 Ensure the vehicle is visible on the ground.
 Verify the vehicle casts shadows correctly.
+
 Step 8: Add Vehicle Movement Controls
 Instructions:
 
@@ -95,84 +97,92 @@ Enable left and right steering (rotation) with left and right keys.
 Update the vehicle’s position and rotation in the render loop based on key inputs.
 Test:
 
-Reload the browser preview.
-Use arrow keys to move and turn the vehicle.
-Confirm smooth movement on the ground plane.
-Step 9: Prevent Vehicle from Falling Through Ground
-Instructions:
-
-Add a collision check to keep the vehicle on the ground plane.
-Use a simple method (e.g., raycasting or position limits) to detect ground level.
-Adjust the vehicle’s position if it goes below the ground.
+Step 9: Add Basic Obstacles
+**�t - In src/objects, create a file named obstacle.js.
+Define an Obstacle class that creates simple 3D objects (e.g., boxes or spheres).
+In track.js, add a method to spawn obstacles at random horizontal positions along the track.
+Add spawned obstacles to the scene in game.js.
 Test:
+Run the game and watch as the player moves forward.
+Verify obstacles appear on the track at varying positions and remain visible as the player approaches.
 
-Reload the browser preview.
-Try moving the vehicle off the ground’s edge.
-Ensure it stays on the ground and doesn’t fall through.
-Step 10: Add Basic Zombie Models
+Step 10: Implement Collision Detection
 Instructions:
-
-Create a simple zombie model using boxes for the body and limbs in main.js.
-Generate multiple zombie instances (e.g., 5–10).
-Randomly place the zombies on the ground plane within a defined area.
+In game.js, create a function to check for collisions between the player and obstacles.
+Use Three.js’s Box3 or similar bounding box method for collision detection.
+Log a message to the console when a collision occurs.
 Test:
+Move the player into an obstacle using arrow keys.
+Check the browser console for a collision message.
 
-Reload the browser preview.
-Verify multiple zombies appear on the ground.
-Ensure they are spread out and visible.
-Step 11: Implement Zombie Movement Toward Vehicle
+Step 11: Add Collectibles
 Instructions:
-
-Add a behavior for zombies to move toward the vehicle in main.js.
-Calculate the direction from each zombie to the vehicle’s position.
-Update each zombie’s position in the render loop to approach the vehicle.
+In src/objects, create a file named collectible.js.
+Define a Collectible class that creates small 3D objects (e.g., glowing spheres).
+In track.js, add a method to spawn collectibles at random horizontal positions along the track.
+Add spawned collectibles to the scene in game.js.
 Test:
+Start the game and move the player forward.
+Confirm collectibles appear on the track at random positions as the player progresses.
 
-Reload the browser preview.
-Move the vehicle and observe zombies following it.
-Confirm zombies adjust direction as the vehicle moves.
-Step 12: Add Vehicle-Zombie Collision Detection
+Step 12: Implement Collectible Interaction
 Instructions:
-
-Implement collision detection between the vehicle and zombies in main.js.
-Use a simple method (e.g., bounding boxes) to check for overlaps.
-Remove a zombie from the scene when it collides with the vehicle.
+In game.js, extend the collision detection function to detect player-collectible intersections.
+When a collectible is collected, remove it from the scene and log a message to the console.
 Test:
+Move the player into a collectible.
+Ensure the collectible disappears from the track and a message appears in the console.
 
-Reload the browser preview.
-Drive the vehicle into a zombie.
-Verify the zombie disappears upon collision.
-Step 13: Create a Score Display
+Step 13: Add Basic Scoring System
 Instructions:
-
-Initialize a score variable in main.js starting at zero.
-Increase the score when a zombie is hit by the vehicle.
-Display the score on the screen using an HTML element overlaid on the canvas.
+In game.js, create a score variable initialized to zero.
+Increment the score when a collectible is collected.
+Add a simple HTML element (e.g., a <div>) in index.html to display the score, styled via css.
+Update the score display in the render loop.
 Test:
+Collect several collectibles while playing.
+Verify the score increases and updates correctly on the screen.
 
-Reload the browser preview.
-Hit a zombie with the vehicle.
-Confirm the score increases and updates on the screen.
-Step 14: Add a Fuel Mechanic
+Step 14: Implement Health System
 Instructions:
-
-Create a fuel variable in main.js with an initial value (e.g., 100).
-Decrease the fuel gradually as the vehicle moves forward or backward.
-Display the fuel level on the screen next to the score.
-Stop vehicle movement when fuel reaches zero.
+In game.js, create a health variable initialized to 3.
+Decrease health by 1 when the player collides with an obstacle.
+Add a health display element in index.html, styled via css.
+Update the health display in the render loop.
 Test:
+Collide with obstacles multiple times.
+Confirm health decreases and the display updates accurately.
 
-Reload the browser preview.
-Move the vehicle and watch the fuel decrease.
-Verify the vehicle stops when fuel hits zero.
-Step 15: Add a Game Over Screen
+Step 15: Add Game Over Condition
 Instructions:
-
-Define a game over condition (e.g., fuel reaches zero).
-Create an HTML element for a "Game Over" message, initially hidden.
-Show the message and stop the game loop when the condition is met.
+In game.js, check if health reaches zero in the render loop.
+If health is zero, stop the render loop and display a "Game Over" message via an HTML overlay.
 Test:
+Collide with obstacles until health reaches zero.
+Ensure the game stops and a "Game Over" message appears on the screen.
 
-Reload the browser preview.
-Play until fuel runs out.
-Confirm the "Game Over" message appears and the game stops.
+Step 16: Integrate Basic Audio
+Instructions:
+In src/utils, create a file named audio.js.
+Use the Web Audio API to load a background music file from the assets folder.
+In game.js, start the music when the game begins.
+Test:
+Launch the game and listen for background music.
+Check the console for no audio-related errors.
+
+Step 17: Synchronize Obstacles and Collectibles with Music
+Instructions:
+In track.js, adjust obstacle and collectible spawning to occur at fixed intervals (e.g., every second).
+Tie the interval timing to the game’s runtime, approximating music rhythm for now.
+Test:
+Play the game and observe obstacles and collectibles appearing at regular intervals.
+Confirm the timing feels rhythmic and consistent with the background music.
+
+Step 18: Add Visual Effects for Interactions
+Instructions:
+In game.js, add a simple visual effect (e.g., a color flash or particle burst) when collecting a collectible.
+Add a different effect (e.g., a red flash) when hitting an obstacle.
+Use Three.js features like materials or basic particle systems.
+Test:
+Collect a collectible and verify a visual effect occurs.
+Hit an obstacle and confirm a distinct effect appears.
