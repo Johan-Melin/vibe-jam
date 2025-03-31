@@ -14,6 +14,9 @@ import { setupAudio, updateEngineSound, musicPlaying } from './audio/audioManage
 import { createVehicle } from './gameplay/vehicle.js';
 import { initRhythmGameSystem, updateRhythmGame, rhythmGame } from './gameplay/rhythmGame.js';
 
+// Import effects modules
+import { initRoadsideObjects, updateRoadsideObjects } from './effects/roadside.js';
+
 // Import utility modules
 import { Clock } from './utils/utils.js';
 import { createStatsPanel, createSceneInfoPanel } from './utils/debug.js';
@@ -38,6 +41,9 @@ const audio = setupAudio(camera);
 
 // Initialize the endless runner track
 const track = initEndlessRunner(scene, vehicleControls.laneWidth);
+
+// Initialize roadside objects
+const roadsideSystem = initRoadsideObjects(scene);
 
 // Add lane dividers
 const laneLines = addNeonAxisLines(scene, vehicleControls.laneWidth);
@@ -88,6 +94,9 @@ function animate() {
     
     // Update endless runner track
     const distance = updateEndlessRunner(deltaTime);
+    
+    // Update roadside objects
+    updateRoadsideObjects(scene, deltaTime, endlessRunner, musicPlaying);
     
     // Update engine sound based on vehicle speed
     updateEngineSound(vehicleControls.speed, vehicleControls.maxSpeed);
