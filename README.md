@@ -51,6 +51,13 @@ npx serve
 - **Left/Right Arrow Keys**: Change lanes
 - **M Key**: Toggle music
 - **C Key**: Change camera view
+- **F Key**: Toggle FPS/performance stats panel
+- **D Key**: Toggle detailed scene info panel
+- **1-4 Keys**: Switch between different stats panels
+  - 1: FPS (frames per second)
+  - 2: MS (milliseconds per frame)
+  - 3: MB (memory usage)
+  - 4: Custom panel (if implemented)
 
 ## Dependencies
 

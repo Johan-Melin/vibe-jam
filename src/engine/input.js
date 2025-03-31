@@ -23,6 +23,12 @@ const vehicleControls = {
     direction: new THREE.Vector3(0, 0, -1)
 };
 
+// Debug controls state
+const debugControls = {
+    statsVisible: true,
+    infoVisible: true
+};
+
 // Set up key controls for vehicle
 function setupVehicleControls() {
     window.addEventListener('keydown', (event) => {
@@ -40,6 +46,10 @@ function setupVehicleControls() {
             case 'M':
                 toggleAudio();
                 break;
+            case 'f': // Toggle FPS stats
+            case 'F':
+                toggleStatsVisibility();
+                break;
         }
     });
     
@@ -53,6 +63,20 @@ function setupVehicleControls() {
                 break;
         }
     });
+}
+
+// Function to toggle stats visibility (implemented in debug.js, but controlled here)
+function toggleStatsVisibility() {
+    debugControls.statsVisible = !debugControls.statsVisible;
+    
+    // The actual implementation is in the debug.js file
+    // Here we just toggle the state and let the DOM element's style be updated
+    const statsPanel = document.querySelector('.stats');
+    if (statsPanel) {
+        statsPanel.style.display = debugControls.statsVisible ? 'block' : 'none';
+    }
+    
+    return debugControls.statsVisible;
 }
 
 // Function to update vehicle position and rotation based on controls
@@ -102,4 +126,4 @@ function updateVehicleMovement(deltaTime, vehicle, scene) {
     return controls.position;
 }
 
-export { vehicleControls, setupVehicleControls, updateVehicleMovement }; 
+export { vehicleControls, debugControls, setupVehicleControls, updateVehicleMovement, toggleStatsVisibility }; 

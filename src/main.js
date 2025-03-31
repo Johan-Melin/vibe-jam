@@ -16,6 +16,7 @@ import { initRhythmGameSystem, updateRhythmGame, rhythmGame } from './gameplay/r
 
 // Import utility modules
 import { Clock } from './utils/utils.js';
+import { createStatsPanel, createSceneInfoPanel } from './utils/debug.js';
 
 // Create the main clock for timing
 const clock = new Clock();
@@ -53,6 +54,10 @@ setupVehicleControls();
 // Set up window resize handler
 setupResizeHandler(renderer, camera);
 
+// Initialize debug info panels
+const stats = createStatsPanel();
+const sceneInfo = createSceneInfoPanel(renderer, scene, camera);
+
 // Initialize rhythm game system
 let rhythmGameSystem = null;
 
@@ -66,6 +71,9 @@ function initRhythmGame() {
 
 // Animation loop
 function animate() {
+    // Begin FPS measurement
+    stats.begin();
+    
     requestAnimationFrame(animate);
     
     // Calculate time delta and elapsed time
@@ -94,8 +102,14 @@ function animate() {
         updateRhythmGame(deltaTime, elapsedTime, musicPlaying, scene);
     }
     
+    // Update debug info panel
+    sceneInfo.update();
+    
     // Render the scene
     renderer.render(scene, camera);
+    
+    // End FPS measurement
+    stats.end();
 }
 
 // Start the animation loop
