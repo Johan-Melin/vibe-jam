@@ -41,7 +41,26 @@ const rhythmGame = {
     fadeDistance: 120, // Distance at which cubes are fully visible
     firstBeatOccurred: false,
     ovalPortal: null,
-    redStartPortal: null // Red start portal in left lane
+    redStartPortal: null, // Red start portal in left lane
+    // Obstacle vehicles system
+    obstaclePool: [], // Pool for obstacle vehicles
+    activeObstacles: [], // Active obstacle vehicles
+    obstaclePoolSize: 15, // Number of obstacle vehicles to pre-create
+    obstacleSpawnInterval: 5000, // Minimum time between obstacle spawns (ms)
+    lastObstacleTime: 0, // When the last obstacle was spawned
+    obstacleSpawnChance: 0.3, // Chance to spawn obstacle on beat
+    obstacleCollisionDistance: 3.0, // Distance at which collisions with obstacles are detected
+    obstacleCloseCallDistance: 5.0, // Distance for tracking near misses with obstacles
+    collisionOccurred: false, // Flag to track if a collision has happened
+    collisionCooldown: 2000, // Cooldown after collision (ms)
+    lastCollisionTime: 0, // When the last collision occurred
+    collisionPenalty: 500, // Score penalty for collision
+    closeCallBonus: 100, // Score bonus for close calls
+    obstacleColors: [ // Colors for obstacles based on lane
+        0xff0000, // Red for left lane
+        0xffaa00, // Orange for center lane
+        0xffff00  // Yellow for right lane
+    ]
 };
 
 // Create a cube for the rhythm game with neon style
@@ -702,6 +721,16 @@ function initRhythmGameSystem(scene, laneWidth) {
         createRedStartPortal(scene, 0); // 0 is left lane
     }
     
+    // Initialize obstacle pool
+    rhythmGame.obstaclePool = [];
+    rhythmGame.activeObstacles = [];
+    
+    // Create obstacle pool
+    for (let i = 0; i < rhythmGame.obstaclePoolSize; i++) {
+        const obstacle = createObstacleVehicle(scene);
+        rhythmGame.obstaclePool.push(obstacle);
+    }
+    
     return rhythmGame;
 }
 
@@ -1149,6 +1178,31 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
         }
     }
     
+    // Occasionally spawn obstacle vehicles (independent of beat)
+    const timeSinceLastObstacle = currentTime - rhythmGame.lastObstacleTime;
+    if (timeSinceLastObstacle > rhythmGame.obstacleSpawnInterval && Math.random() < rhythmGame.obstacleSpawnChance) {
+        rhythmGame.lastObstacleTime = currentTime;
+        
+        // Choose a random lane for the obstacle
+        const lane = Math.floor(Math.random() * rhythmGame.lanes);
+        const beatTime = currentTime + (rhythmGame.beatInterval * 4);
+        
+        // Spawn obstacle
+        spawnObstacleVehicle(scene, lane, beatTime);
+    }
+    
+    // Also potentially spawn obstacle with beat detection (instead of a cube)
+    if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
+        // ... existing beat detection code ...
+        
+        // Chance to spawn obstacle instead of cube on beat
+        if (Math.random() < 0.15) { // 15% chance
+            const lane = Math.floor(Math.random() * rhythmGame.lanes);
+            const beatTime = currentTime + (rhythmGame.beatInterval * 4);
+            spawnObstacleVehicle(scene, lane, beatTime);
+        }
+    }
+    
     // Update particle effects
     updateParticleEffects(currentTime);
     
@@ -1170,6 +1224,9 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     
     // Check for cube collection
     checkCubeCollisions(vehicle);
+    
+    // Check for obstacle collisions
+    checkObstacleCollisions(vehicle);
     
     // Update existing cubes
     for (let i = rhythmGame.activeCubes.length - 1; i >= 0; i--) {
@@ -1278,6 +1335,91 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
         }
     }
     
+    // Update active obstacles
+    for (let i = rhythmGame.activeObstacles.length - 1; i >= 0; i--) {
+        const obstacle = rhythmGame.activeObstacles[i];
+        
+        // Get lane position
+        const laneIndex = obstacle.userData.lane;
+        const lanePos = rhythmGame.lanePositions[laneIndex];
+        
+        // Calculate how far along its journey the obstacle is
+        const timeToBeat = obstacle.userData.beatTime - currentTime;
+        const totalDuration = rhythmGame.beatInterval * 4; // Match cube timing
+        
+        // Calculate distance from vehicle
+        let distanceFromVehicle;
+        if (timeToBeat >= 0) {
+            // Obstacle is still approaching the vehicle
+            distanceFromVehicle = (timeToBeat / totalDuration) * rhythmGame.spawnDistance;
+        } else {
+            // Obstacle has passed the beat time
+            const timeSinceBeat = -timeToBeat;
+            const pastDistance = (timeSinceBeat / totalDuration) * rhythmGame.spawnDistance;
+            distanceFromVehicle = -pastDistance; // Negative = behind vehicle
+        }
+        
+        // Update obstacle position
+        obstacle.position.x = lanePos.x;
+        obstacle.position.z = -distanceFromVehicle;
+        
+        // Save position for next frame
+        obstacle.userData.lastPosition.copy(obstacle.position);
+        
+        // Apply same opacity/fade rules as cubes
+        let opacity = 1.0;
+        if (distanceFromVehicle > rhythmGame.fadeDistance) {
+            // Fade out objects that are too far
+            opacity = 1 - ((distanceFromVehicle - rhythmGame.fadeDistance) / 30);
+            opacity = Math.max(0, opacity);
+        } else if (distanceFromVehicle > rhythmGame.fadeDistance * 0.8) {
+            // Full opacity in optimal range
+            opacity = 1.0;
+        } else {
+            // Fade in objects that are approaching from far away
+            const fadeInStart = rhythmGame.fadeInDistance;
+            if (distanceFromVehicle > fadeInStart) {
+                // Complete fade out when very distant
+                opacity = 0.0;
+            } else {
+                // Gradually fade in as objects get closer
+                opacity = 1.0 - (distanceFromVehicle / fadeInStart);
+                opacity = Math.max(0, Math.min(1, opacity));
+                
+                // Apply easing function for smoother appearance (cubic easing)
+                opacity = opacity * opacity * (3 - 2 * opacity);
+            }
+        }
+        
+        // Apply opacity to all material components
+        if (obstacle.userData.body) {
+            obstacle.userData.body.material.opacity = opacity;
+        }
+        if (obstacle.userData.cabin) {
+            obstacle.userData.cabin.material.opacity = opacity;
+        }
+        
+        // Rotate wheels
+        if (obstacle.userData.wheels) {
+            obstacle.userData.wheels.forEach(wheel => {
+                wheel.rotation.x += 0.1; // Simple constant speed for now
+            });
+        }
+        
+        // Pulse headlights
+        if (obstacle.userData.headlights) {
+            const pulseIntensity = 1.0 + Math.sin(currentTime * 0.005) * 0.3;
+            obstacle.userData.headlights.forEach(light => {
+                light.material.emissiveIntensity = pulseIntensity * opacity;
+            });
+        }
+        
+        // Check if obstacle has passed too far behind the vehicle
+        if (distanceFromVehicle < -rhythmGame.despawnDistance) {
+            returnObstacleToPool(obstacle);
+        }
+    }
+    
     return {
         score: rhythmGame.score,
         multiplier: rhythmGame.multiplier,
@@ -1297,6 +1439,367 @@ function getScoreInfo() {
     };
 }
 
+// Create an obstacle vehicle for the rhythm game
+function createObstacleVehicle(scene) {
+    // Create a group to hold all vehicle parts
+    const vehicle = new THREE.Group();
+    
+    // Create the main body of the vehicle (a car-like shape)
+    const bodyGeometry = new THREE.BoxGeometry(2.0, 0.8, 3.5);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x000000, // Black base
+        metalness: 0.9,
+        roughness: 0.2,
+        emissive: 0xff0000, // Red neon glow - will be overridden per lane
+        emissiveIntensity: 1.0
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.8; // Height from ground
+    body.castShadow = true;
+    body.receiveShadow = true;
+    vehicle.add(body);
+    
+    // Add neon trim to the body
+    const edgeGeometry = new THREE.EdgesGeometry(bodyGeometry);
+    const edgeMaterial = new THREE.LineBasicMaterial({ 
+        color: 0xff0000, // Red neon - will be overridden per lane
+        linewidth: 2
+    });
+    const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    edges.position.y = 0.8;
+    vehicle.add(edges);
+    
+    // Create a cabin for the vehicle
+    const cabinGeometry = new THREE.BoxGeometry(1.8, 0.7, 1.5);
+    const cabinMaterial = new THREE.MeshStandardMaterial({
+        color: 0x000000, // Black
+        metalness: 0.7,
+        roughness: 0.3,
+        emissive: 0xff0000, // Red glow - will be overridden per lane
+        emissiveIntensity: 0.7
+    });
+    const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+    cabin.position.y = 1.6; // On top of body
+    cabin.position.z = -0.5; // Toward the front
+    cabin.castShadow = true;
+    cabin.receiveShadow = true;
+    vehicle.add(cabin);
+    
+    // Add neon trim to the cabin
+    const cabinEdgeGeometry = new THREE.EdgesGeometry(cabinGeometry);
+    const cabinEdges = new THREE.LineSegments(cabinEdgeGeometry, edgeMaterial);
+    cabinEdges.position.y = 1.6;
+    cabinEdges.position.z = -0.5;
+    vehicle.add(cabinEdges);
+    
+    // Create four wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222, // Dark gray
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    
+    // Wheel positions
+    const wheelPositions = [
+        { x: -1.0, y: 0.4, z: -1.0 }, // Front left
+        { x: 1.0, y: 0.4, z: -1.0 },  // Front right
+        { x: -1.0, y: 0.4, z: 1.0 },  // Rear left
+        { x: 1.0, y: 0.4, z: 1.0 }    // Rear right
+    ];
+    
+    // Add wheels
+    const wheels = [];
+    wheelPositions.forEach(position => {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.position.set(position.x, position.y, position.z);
+        wheel.rotation.z = Math.PI / 2; // Rotate to align with vehicle
+        wheel.castShadow = true;
+        wheel.receiveShadow = true;
+        wheels.push(wheel);
+        vehicle.add(wheel);
+    });
+    
+    // Add headlights at the front (facing the player)
+    const headlightGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const headlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 1.2,
+        metalness: 0.9,
+        roughness: 0.1
+    });
+    
+    const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    leftHeadlight.position.set(-0.7, 0.8, -1.8);
+    leftHeadlight.scale.set(1, 1, 0.5);
+    vehicle.add(leftHeadlight);
+    
+    const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+    rightHeadlight.position.set(0.7, 0.8, -1.8);
+    rightHeadlight.scale.set(1, 1, 0.5);
+    vehicle.add(rightHeadlight);
+    
+    // Make the vehicle face the player (opposite direction of cubes)
+    vehicle.rotation.y = Math.PI;
+    
+    // Hide the vehicle initially
+    vehicle.visible = false;
+    
+    // Store vehicle components
+    vehicle.userData = {
+        active: false,
+        lane: 0,
+        beatTime: 0,
+        initialScale: 1,
+        collided: false, // Flag to track if this obstacle has collided with the player
+        body: body,
+        edges: edges,
+        cabin: cabin,
+        cabinEdges: cabinEdges,
+        headlights: [leftHeadlight, rightHeadlight],
+        wheels: wheels,
+        lastPosition: new THREE.Vector3() // For tracking movement between frames
+    };
+    
+    // Add to scene
+    scene.add(vehicle);
+    
+    return vehicle;
+}
+
+// Get a vehicle from the pool
+function getPooledObstacle(scene) {
+    // Check if there's an available obstacle in the pool
+    for (const obstacle of rhythmGame.obstaclePool) {
+        if (!obstacle.userData.active) {
+            obstacle.visible = true;
+            obstacle.userData.active = true;
+            rhythmGame.activeObstacles.push(obstacle);
+            return obstacle;
+        }
+    }
+    
+    // If no obstacles available, create a new one
+    console.log("Obstacle pool exhausted, creating new obstacle");
+    const newObstacle = createObstacleVehicle(scene);
+    newObstacle.visible = true;
+    newObstacle.userData.active = true;
+    rhythmGame.obstaclePool.push(newObstacle);
+    rhythmGame.activeObstacles.push(newObstacle);
+    return newObstacle;
+}
+
+// Return an obstacle to the pool
+function returnObstacleToPool(obstacle) {
+    obstacle.visible = false;
+    obstacle.userData.active = false;
+    obstacle.userData.collided = false;
+    
+    // Remove from active obstacles
+    const index = rhythmGame.activeObstacles.indexOf(obstacle);
+    if (index >= 0) {
+        rhythmGame.activeObstacles.splice(index, 1);
+    }
+}
+
+// Spawn an obstacle vehicle in a specified lane
+function spawnObstacleVehicle(scene, lane, beatTime) {
+    // Check cooldown between obstacles in the same lane
+    const now = performance.now();
+    
+    // Don't spawn if this lane has had something spawned recently
+    if (now - rhythmGame.laneSpawnStatus[lane] < rhythmGame.minLaneSpawnInterval * 1.5) {
+        return null;
+    }
+    
+    // Get a vehicle from the pool
+    const obstacle = getPooledObstacle(scene);
+    
+    // Get lane position
+    const lanePos = rhythmGame.lanePositions[lane];
+    
+    // Position the obstacle at the spawn distance
+    obstacle.position.set(
+        lanePos.x,
+        0, // On the ground
+        -rhythmGame.spawnDistance // Far ahead on Z-axis
+    );
+    
+    // Store the lane and beat time
+    obstacle.userData.lane = lane;
+    obstacle.userData.beatTime = beatTime;
+    obstacle.userData.initialScale = 1;
+    obstacle.userData.lastPosition.copy(obstacle.position);
+    
+    // Set color based on lane
+    const laneColor = new THREE.Color(rhythmGame.obstacleColors[lane]);
+    
+    // Update materials
+    obstacle.userData.body.material.emissive.copy(laneColor);
+    obstacle.userData.edges.material.color.copy(laneColor);
+    obstacle.userData.cabin.material.emissive.copy(laneColor);
+    obstacle.userData.cabinEdges.material.color.copy(laneColor);
+    
+    // Store spawn data
+    rhythmGame.laneSpawnStatus[lane] = now;
+    
+    return obstacle;
+}
+
+// Handle collision with obstacle
+function handleObstacleCollision(scene, vehicle, obstacle) {
+    if (obstacle.userData.collided) {
+        return; // Already processed this collision
+    }
+    
+    obstacle.userData.collided = true;
+    
+    // Apply score penalty
+    rhythmGame.score = Math.max(0, rhythmGame.score - rhythmGame.collisionPenalty);
+    
+    // Reset multiplier
+    rhythmGame.multiplier = 1;
+    rhythmGame.multiplierProgress = 0;
+    
+    // Visual feedback for collision
+    const flashColor = new THREE.Color(0xff0000); // Red flash
+    
+    // Create explosion effect
+    const explosionParticles = triggerParticleEffect(scene, obstacle.position.clone(), flashColor);
+    if (explosionParticles) {
+        // Make explosion bigger
+        explosionParticles.userData.speed = 4.0;
+        explosionParticles.userData.duration = 1500;
+    }
+    
+    // Screen shake effect
+    const gameCanvas = document.getElementById('game-canvas');
+    if (gameCanvas) {
+        gameCanvas.style.animation = 'none';
+        void gameCanvas.offsetWidth; // Trigger reflow
+        gameCanvas.style.animation = 'screenShake 0.5s';
+    }
+    
+    // Add screen shake animation if it doesn't exist
+    if (!document.getElementById('screen-shake-style')) {
+        const style = document.createElement('style');
+        style.id = 'screen-shake-style';
+        style.textContent = `
+            @keyframes screenShake {
+                0% { transform: translate(0); }
+                10% { transform: translate(-5px, -5px); }
+                20% { transform: translate(5px, 5px); }
+                30% { transform: translate(-5px, 5px); }
+                40% { transform: translate(5px, -5px); }
+                50% { transform: translate(-5px, 0); }
+                60% { transform: translate(5px, 0); }
+                70% { transform: translate(0, 5px); }
+                80% { transform: translate(0, -5px); }
+                90% { transform: translate(-3px, -3px); }
+                100% { transform: translate(0); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Flash effect on screen
+    const flashOverlay = document.createElement('div');
+    flashOverlay.style.position = 'fixed';
+    flashOverlay.style.top = '0';
+    flashOverlay.style.left = '0';
+    flashOverlay.style.width = '100%';
+    flashOverlay.style.height = '100%';
+    flashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+    flashOverlay.style.zIndex = '1000';
+    flashOverlay.style.transition = 'opacity 0.5s ease-out';
+    flashOverlay.style.opacity = '0.8';
+    
+    document.body.appendChild(flashOverlay);
+    
+    // Fade out the flash effect
+    setTimeout(() => {
+        flashOverlay.style.opacity = '0';
+        setTimeout(() => {
+            document.body.removeChild(flashOverlay);
+        }, 500);
+    }, 100);
+    
+    // Set collision cooldown
+    rhythmGame.collisionOccurred = true;
+    rhythmGame.lastCollisionTime = performance.now();
+    
+    // Remove obstacle
+    returnObstacleToPool(obstacle);
+    
+    // Return penalty amount for display purposes
+    return -rhythmGame.collisionPenalty;
+}
+
+// Handle close call with obstacle (near miss)
+function handleObstacleCloseCall(scene, obstacle) {
+    // Create floating score text for close call bonus
+    createFloatingScore(scene, obstacle.position, rhythmGame.closeCallBonus);
+    
+    // Add points
+    rhythmGame.score += rhythmGame.closeCallBonus;
+    
+    // Add to multiplier progress
+    rhythmGame.multiplierProgress++;
+    if (rhythmGame.multiplierProgress >= rhythmGame.multiplierThreshold) {
+        rhythmGame.multiplierProgress = 0;
+        if (rhythmGame.multiplier < rhythmGame.maxMultiplier) {
+            rhythmGame.multiplier *= 2;
+        }
+    }
+    
+    // Create a subtle visual effect for close call
+    const closeCallColor = new THREE.Color(0xffff00); // Yellow flash
+    triggerParticleEffect(scene, obstacle.position.clone(), closeCallColor);
+    
+    // Mark obstacle as having triggered close call to avoid repeat triggers
+    obstacle.userData.closeCallTriggered = true;
+    
+    return rhythmGame.closeCallBonus;
+}
+
+// Check for obstacle collisions with the vehicle
+function checkObstacleCollisions(vehicle) {
+    if (!vehicle) return;
+    
+    // Skip collision check during cooldown
+    const now = performance.now();
+    if (rhythmGame.collisionOccurred && now - rhythmGame.lastCollisionTime < rhythmGame.collisionCooldown) {
+        return;
+    }
+    
+    rhythmGame.collisionOccurred = false;
+    
+    const vehiclePosition = vehicle.group.position.clone();
+    const collisionDistance = rhythmGame.obstacleCollisionDistance;
+    const closeCallDistance = rhythmGame.obstacleCloseCallDistance;
+    
+    rhythmGame.activeObstacles.forEach(obstacle => {
+        if (obstacle.userData.collided) return; // Skip if already collided
+        
+        // Check if obstacle is in same lane as vehicle
+        const xDistance = Math.abs(obstacle.position.x - vehiclePosition.x);
+        const inSameLane = xDistance < rhythmGame.laneWidth * 0.5;
+        
+        // Check distance to vehicle
+        const zDistance = Math.abs(obstacle.position.z - vehiclePosition.z);
+        
+        // Collision detection
+        if (inSameLane && zDistance < collisionDistance) {
+            handleObstacleCollision(obstacle.parent, vehicle, obstacle);
+        }
+        // Close call detection - needs to be in same lane, recently passed player, and not yet triggered
+        else if (inSameLane && zDistance < closeCallDistance && obstacle.position.z > vehiclePosition.z && !obstacle.userData.closeCallTriggered) {
+            handleObstacleCloseCall(obstacle.parent, obstacle);
+        }
+    });
+}
+
 export { 
     initRhythmGameSystem, 
     updateRhythmGame, 
@@ -1305,5 +1808,8 @@ export {
     getScoreInfo,
     checkPortalCollisions,
     createPortalEntryEffect,
-    createRedStartPortal
+    createRedStartPortal,
+    createObstacleVehicle,
+    spawnObstacleVehicle,
+    checkObstacleCollisions
 }; 
