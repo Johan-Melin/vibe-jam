@@ -38,7 +38,9 @@ const rhythmGame = {
     minLaneSpawnInterval: 1000, // Minimum time between spawns in the same lane (ms)
     spawnHistory: {}, // Track spawn times for each beat time to avoid overlaps
     fadeInDistance: 180, // Distance at which cubes start to fade in
-    fadeDistance: 120 // Distance at which cubes are fully visible
+    fadeDistance: 120, // Distance at which cubes are fully visible
+    firstBeatOccurred: false,
+    ovalPortal: null
 };
 
 // Create a cube for the rhythm game with neon style
@@ -244,6 +246,166 @@ function updateParticleEffects(currentTime) {
     });
 }
 
+// Create a portal that looks like a green oval
+function createOvalPortal(scene, laneIndex) {
+    // Create portal group
+    const portalGroup = new THREE.Group();
+    
+    // Get lane position for the right lane
+    const lanePos = rhythmGame.lanePositions[laneIndex];
+    
+    // Position the portal in the right lane at spawn distance
+    portalGroup.position.set(
+        lanePos.x,
+        2, // Slightly above ground level
+        -rhythmGame.spawnDistance // Same distance as cubes
+    );
+    
+    // Create oval ring (actually a scaled torus) - but smaller
+    const torusGeometry = new THREE.TorusGeometry(3, 0.3, 16, 50);
+    const torusMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+        emissiveIntensity: 1.2,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const torus = new THREE.Mesh(torusGeometry, torusMaterial);
+    // Scale to make it oval
+    torus.scale.set(1, 1.5, 1);
+    portalGroup.add(torus);
+    
+    // Create inner surface
+    const ovalGeometry = new THREE.CircleGeometry(2.8, 32);
+    const ovalMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const oval = new THREE.Mesh(ovalGeometry, ovalMaterial);
+    portalGroup.add(oval);
+    
+    // Add particles around the portal - fewer particles
+    const particleCount = 100;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleColors = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 3 + (Math.random() - 0.5) * 0.5;
+        
+        // Calculate positions in an oval shape
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius * 1.5; // Multiply by 1.5 for the oval shape
+        const z = (Math.random() - 0.5) * 0.3;
+        
+        particlePositions[i * 3] = x;
+        particlePositions[i * 3 + 1] = y;
+        particlePositions[i * 3 + 2] = z;
+        
+        // Green particles with some variation
+        particleColors[i * 3] = 0.1 + Math.random() * 0.2; // Small amount of red
+        particleColors[i * 3 + 1] = 0.8 + Math.random() * 0.2; // Lots of green
+        particleColors[i * 3 + 2] = 0.1 + Math.random() * 0.2; // Small amount of blue
+    }
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+    
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 0.1,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    portalGroup.add(particles);
+    
+    // Store animation data
+    portalGroup.userData = {
+        active: true,
+        particles: particleGeometry,
+        spawnTime: performance.now(),
+        beatTime: performance.now() + (rhythmGame.beatInterval * 4), // Same timing as cubes
+        lane: laneIndex,
+        particlePositions: particlePositions,
+        particleCount: particleCount,
+        scene: scene // Store scene reference
+    };
+    
+    scene.add(portalGroup);
+    rhythmGame.ovalPortal = portalGroup;
+    
+    return portalGroup;
+}
+
+// Update the oval portal position and effects
+function updateOvalPortal(currentTime, scene) {
+    if (!rhythmGame.ovalPortal) return;
+    
+    const portal = rhythmGame.ovalPortal;
+    // Use the stored scene reference
+    scene = scene || portal.userData.scene;
+    
+    // Calculate how far along its journey the portal is, just like cubes
+    const timeToBeat = portal.userData.beatTime - currentTime;
+    const totalDuration = rhythmGame.beatInterval * 4;
+    
+    let distanceFromVehicle;
+    if (timeToBeat >= 0) {
+        // Portal is still approaching the vehicle
+        distanceFromVehicle = (timeToBeat / totalDuration) * rhythmGame.spawnDistance;
+    } else {
+        // Portal has passed the beat time
+        const timeSinceBeat = -timeToBeat;
+        const pastDistance = (timeSinceBeat / totalDuration) * rhythmGame.spawnDistance;
+        distanceFromVehicle = -pastDistance;
+    }
+    
+    // Update portal position
+    const laneIndex = portal.userData.lane;
+    const lanePos = rhythmGame.lanePositions[laneIndex];
+    portal.position.x = lanePos.x;
+    portal.position.z = -distanceFromVehicle;
+    
+    // Animate particles with subtle pulsing only (no spinning)
+    if (portal.userData.particles) {
+        const positions = portal.userData.particlePositions;
+        const particleCount = portal.userData.particleCount;
+        
+        for (let i = 0; i < particleCount; i++) {
+            // Apply a subtle pulsing effect instead of rotation
+            const pulseFactor = Math.sin(currentTime * 0.001 + i) * 0.05;
+            const baseIndex = i * 3;
+            
+            // Original position is maintained, just add subtle variation
+            const originalX = positions[baseIndex];
+            const originalY = positions[baseIndex + 1];
+            
+            // Subtle pulse effect
+            positions[baseIndex] = originalX * (1 + pulseFactor);
+            positions[baseIndex + 1] = originalY * (1 + pulseFactor);
+        }
+        
+        portal.userData.particles.attributes.position.needsUpdate = true;
+    }
+    
+    // No rotation - keep the portal static
+    
+    // Remove portal if it's gone too far past the player
+    if (distanceFromVehicle < -rhythmGame.despawnDistance * 2) {
+        if (scene) {
+            scene.remove(portal);
+        }
+        rhythmGame.ovalPortal = null;
+    }
+}
+
 // Initialize the rhythm game system
 function initRhythmGameSystem(scene, laneWidth) {
     // Clear any existing cubes
@@ -281,6 +443,10 @@ function initRhythmGameSystem(scene, laneWidth) {
     rhythmGame.multiplier = 1;
     rhythmGame.multiplierProgress = 0;
     rhythmGame.cubesCollected = 0;
+    
+    // Add flag to track if first beat has happened
+    rhythmGame.firstBeatOccurred = false;
+    rhythmGame.ovalPortal = null;
     
     return rhythmGame;
 }
@@ -612,6 +778,15 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
         rhythmGame.lastBeatTime = currentTime;
         
+        // Check if this is the first beat
+        if (!rhythmGame.firstBeatOccurred) {
+            rhythmGame.firstBeatOccurred = true;
+            
+            // Spawn the oval portal in the right lane
+            createOvalPortal(scene, 2); // 2 is right lane (0=left, 1=center, 2=right)
+            console.log("Green oval portal created in right lane");
+        }
+        
         // Only spawn one cube per beat, randomly selecting a lane
         const lane = Math.floor(Math.random() * rhythmGame.lanes);
         const beatTime = currentTime + (rhythmGame.beatInterval * 4);
@@ -636,6 +811,11 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     
     // Update floating scores
     updateFloatingScores(scene, currentTime);
+    
+    // Update oval portal - pass the scene parameter
+    if (rhythmGame.ovalPortal) {
+        updateOvalPortal(currentTime, scene);
+    }
     
     // Check for cube collection
     checkCubeCollisions(vehicle);
