@@ -211,27 +211,107 @@ function updateLoadingStatus(type, status, progress = 0) {
 // Check if all audio is loaded and update UI accordingly
 function checkAllAudioLoaded() {
     if (audioLoaded && musicLoaded) {
+        console.log("All audio components loaded successfully");
+        
         const loadingDiv = document.getElementById('audio-loading-status');
         if (loadingDiv) {
+            // Show the completed status for 1.5 seconds before fading
             setTimeout(() => {
                 loadingDiv.style.transition = 'opacity 1s';
                 loadingDiv.style.opacity = '0';
+                
+                // After the loading UI fades out, setup key/click listeners
                 setTimeout(() => {
                     loadingDiv.style.display = 'none';
                     
-                    // Automatically start audio when everything is loaded
-                    startAudioAutomatically();
+                    // Instead of auto-starting, listen for any key or click
+                    setupStartListeners();
                 }, 1000);
-            }, 1500); // Show the completed status for 1.5 seconds before fading
+            }, 1500);
+        } else {
+            // If no loading UI exists, just setup the listeners
+            setupStartListeners();
         }
     }
+}
+
+// Set up listeners for any key or click to start audio
+function setupStartListeners() {
+    console.log("Audio loaded - waiting for user interaction to start");
+    
+    // Show a subtle hint that won't block the game
+    showStartHint();
+    
+    // One-time event listeners for first interaction
+    const startAudioOnce = () => {
+        // Start the audio
+        startAudioAutomatically();
+        
+        // Remove the hint if it exists
+        const hintElement = document.getElementById('start-audio-hint');
+        if (hintElement) {
+            hintElement.style.opacity = '0';
+            setTimeout(() => {
+                if (hintElement.parentNode) {
+                    hintElement.parentNode.removeChild(hintElement);
+                }
+            }, 1000);
+        }
+        
+        // Remove all event listeners
+        window.removeEventListener('keydown', startAudioOnce);
+        window.removeEventListener('click', startAudioOnce);
+        window.removeEventListener('touchstart', startAudioOnce);
+    };
+    
+    // Add event listeners for common interactions
+    window.addEventListener('keydown', startAudioOnce);
+    window.addEventListener('click', startAudioOnce);
+    window.addEventListener('touchstart', startAudioOnce);
+}
+
+// Show a subtle hint to press any key or click to start audio
+function showStartHint() {
+    const hintDiv = document.createElement('div');
+    hintDiv.id = 'start-audio-hint';
+    hintDiv.style.position = 'absolute';
+    hintDiv.style.bottom = '20px';
+    hintDiv.style.left = '50%';
+    hintDiv.style.transform = 'translateX(-50%)';
+    hintDiv.style.backgroundColor = 'rgba(0,0,0,0.4)';
+    hintDiv.style.color = 'white';
+    hintDiv.style.padding = '8px 16px';
+    hintDiv.style.borderRadius = '4px';
+    hintDiv.style.fontFamily = 'Arial, sans-serif';
+    hintDiv.style.fontSize = '14px';
+    hintDiv.style.opacity = '0';
+    hintDiv.style.transition = 'opacity 0.5s';
+    hintDiv.style.zIndex = '1000';
+    hintDiv.style.pointerEvents = 'none'; // So it doesn't interfere with game controls
+    hintDiv.textContent = 'Press any key or click to start music';
+    
+    // Add to document
+    document.body.appendChild(hintDiv);
+    
+    // Fade in the hint
+    setTimeout(() => {
+        hintDiv.style.opacity = '1';
+    }, 100);
+    
+    // Fade out the hint after 5 seconds if no interaction
+    setTimeout(() => {
+        if (hintDiv.parentNode) {
+            hintDiv.style.opacity = '0';
+        }
+    }, 5000);
 }
 
 // Only show the audio start message when both engine and music are loaded
 function checkAndShowAudioStartMessage() {
     if (audioLoaded && musicLoaded) {
-        // No longer showing message, starting automatically instead
-        startAudioAutomatically();
+        // No longer showing message or auto-starting,
+        // now waiting for user interaction
+        console.log("Audio loaded, waiting for user interaction");
     }
 }
 
@@ -393,44 +473,62 @@ function toggleAudio() {
     return musicPlaying;
 }
 
-// Start audio automatically without requiring user interaction
+// Start audio after user interaction
 function startAudioAutomatically() {
     // Only start if not already playing
-    if (musicPlaying) return;
+    if (musicPlaying) {
+        console.log("Music already playing, no need to start again");
+        return;
+    }
     
-    console.log("Starting audio automatically");
+    console.log("Starting audio after user interaction");
     
+    // First ensure audio context is running
     if (audioContext && audioContext.state !== 'running') {
+        console.log("Resuming audio context...");
+        
         audioContext.resume().then(() => {
             console.log('AudioContext resumed successfully');
-            
-            // Start both engine and music
-            if (!engineSound.isPlaying) {
-                engineSound.play();
-                console.log("Engine sound started automatically");
-            }
-            
-            if (backgroundMusic && !backgroundMusic.isPlaying) {
-                backgroundMusic.play();
-                musicPlaying = true;
-                console.log("Background music started automatically");
-            }
+            startPlayback();
         }).catch(err => {
-            console.error("Failed to start audio context automatically:", err);
-            // Fall back to showing message if auto-start fails
-            showAudioStartMessage();
+            console.error("Failed to resume audio context:", err);
+            // Try anyway - user interaction often unlocks it
+            startPlayback();
         });
     } else {
         // Context already running, just play the sounds
-        if (!engineSound.isPlaying) {
-            engineSound.play();
-            console.log("Engine sound started automatically");
-        }
-        
-        if (backgroundMusic && !backgroundMusic.isPlaying) {
-            backgroundMusic.play();
-            musicPlaying = true;
-            console.log("Background music started automatically");
+        startPlayback();
+    }
+    
+    function startPlayback() {
+        try {
+            // Start engine sound
+            if (engineSound && !engineSound.isPlaying) {
+                engineSound.play();
+                console.log("Engine sound started");
+            }
+            
+            // Start background music
+            if (backgroundMusic && !backgroundMusic.isPlaying) {
+                backgroundMusic.play();
+                musicPlaying = true;
+                console.log("Background music started");
+                
+                // Double-check playback after a moment
+                setTimeout(() => {
+                    if (!backgroundMusic.isPlaying) {
+                        console.warn("Music didn't start properly, trying again");
+                        try {
+                            backgroundMusic.play();
+                            musicPlaying = true;
+                        } catch (e) {
+                            console.error("Error restarting music:", e);
+                        }
+                    }
+                }, 500);
+            }
+        } catch (error) {
+            console.error("Error starting audio:", error);
         }
     }
 }
