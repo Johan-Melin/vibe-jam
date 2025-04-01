@@ -32,64 +32,66 @@ function setupAudio(camera) {
     // Create status elements for loading progress
     createLoadingStatusElements();
     
-    // Load engine sound
-    audioLoader.load('./sounds/engine_loop.mp3', function(buffer) {
-        engineSound.setBuffer(buffer);
-        engineSound.setLoop(true);
-        engineSound.setVolume(0.05);
-        // Don't autoplay - wait for user interaction
-        audioLoaded = true;
-        
-        // Start with idle engine sound when played
-        engineSound.setPlaybackRate(0.5);
-        
-        updateLoadingStatus('engine', 'complete');
-        
-        // Show a message to the user if both sounds are loaded
-        checkAndShowAudioStartMessage();
-    },
-    // onProgress callback
-    function(xhr) {
-        const progress = Math.round(xhr.loaded / xhr.total * 100);
-        console.log('Engine sound: ' + progress + '% loaded');
-        updateLoadingStatus('engine', 'loading', progress);
-    },
-    // onError callback
-    function(err) {
-        console.error('Could not load engine sound: ' + err);
-        updateLoadingStatus('engine', 'error');
-    });
+    // Load engine sound with path fallbacks
+    loadSoundWithFallbacks(
+        audioLoader,
+        ['./sounds/engine_loop.mp3', './public/sounds/engine_loop.mp3'],
+        (buffer) => {
+            engineSound.setBuffer(buffer);
+            engineSound.setLoop(true);
+            engineSound.setVolume(0.05);
+            // Don't autoplay - wait for user interaction
+            audioLoaded = true;
+            
+            // Start with idle engine sound when played
+            engineSound.setPlaybackRate(0.5);
+            
+            updateLoadingStatus('engine', 'complete');
+            
+            // Show a message to the user if both sounds are loaded
+            checkAndShowAudioStartMessage();
+        },
+        (progress) => {
+            console.log('Engine sound: ' + progress + '% loaded');
+            updateLoadingStatus('engine', 'loading', progress);
+        },
+        (err) => {
+            console.error('Could not load engine sound: ' + err);
+            updateLoadingStatus('engine', 'error');
+        }
+    );
     
-    // Load background music
-    audioLoader.load('./music/Electric Fever Dream.mp3', function(buffer) {
-        backgroundMusic.setBuffer(buffer);
-        backgroundMusic.setLoop(true);
-        backgroundMusic.setVolume(0.7);
-        musicLoaded = true;
-        console.log('Background music loaded successfully');
-        
-        // Set up audio analyzer once music is loaded
-        setupAudioAnalyzer();
-        
-        updateLoadingStatus('music', 'complete');
-        
-        // Show a message to the user if both sounds are loaded
-        checkAndShowAudioStartMessage();
-    },
-    // onProgress callback
-    function(xhr) {
-        const progress = Math.round(xhr.loaded / xhr.total * 100);
-        console.log('Background music: ' + progress + '% loaded');
-        updateLoadingStatus('music', 'loading', progress);
-    },
-    // onError callback
-    function(err) {
-        console.error('Could not load background music: ' + err);
-        updateLoadingStatus('music', 'error');
-        
-        // Try alternative file names if the first one fails
-        tryAlternativeMusicFiles(audioLoader);
-    });
+    // Load music with path fallbacks
+    loadSoundWithFallbacks(
+        audioLoader,
+        ['./music/Electric Fever Dream.mp3', './public/music/Electric Fever Dream.mp3'],
+        (buffer) => {
+            backgroundMusic.setBuffer(buffer);
+            backgroundMusic.setLoop(true);
+            backgroundMusic.setVolume(0.7);
+            musicLoaded = true;
+            console.log('Background music loaded successfully');
+            
+            // Set up audio analyzer once music is loaded
+            setupAudioAnalyzer();
+            
+            updateLoadingStatus('music', 'complete');
+            
+            // Show a message to the user if both sounds are loaded
+            checkAndShowAudioStartMessage();
+        },
+        (progress) => {
+            console.log('Background music: ' + Math.round(progress) + '% loaded');
+            updateLoadingStatus('music', 'loading', Math.round(progress));
+        },
+        (err) => {
+            console.error('Could not load background music: ' + err);
+            updateLoadingStatus('music', 'error');
+            
+            // Try alternative file names if the first one fails
+            tryAlternativeMusicFiles(audioLoader);
+        }
+    );
     
     return {
         engineSound,
@@ -229,13 +231,49 @@ function checkAndShowAudioStartMessage() {
     }
 }
 
+// Function to try loading a sound from multiple paths
+function loadSoundWithFallbacks(audioLoader, paths, onSuccess, onProgress, onError) {
+    let currentPathIndex = 0;
+    
+    function tryNextPath() {
+        if (currentPathIndex >= paths.length) {
+            // We've tried all paths and none worked
+            onError(new Error(`Failed to load audio. Tried paths: ${paths.join(', ')}`));
+            return;
+        }
+        
+        const currentPath = paths[currentPathIndex];
+        console.log(`Trying to load audio from: ${currentPath}`);
+        
+        audioLoader.load(
+            currentPath,
+            (buffer) => {
+                console.log(`Successfully loaded audio from: ${currentPath}`);
+                onSuccess(buffer);
+            },
+            (xhr) => {
+                const progress = xhr.loaded / xhr.total * 100;
+                onProgress(progress);
+            },
+            (err) => {
+                console.warn(`Failed to load audio from: ${currentPath}, trying next path...`);
+                currentPathIndex++;
+                tryNextPath();
+            }
+        );
+    }
+    
+    // Start trying paths
+    tryNextPath();
+}
+
 // Try to load music using alternative filenames
 function tryAlternativeMusicFiles(audioLoader) {
     const possibleFilenames = [
-        './music/background.mp3',
-        './music/track.mp3',
-        './music/theme.mp3',
-        './music/music.mp3'
+        ['./music/background.mp3', './public/music/background.mp3'],
+        ['./music/track.mp3', './public/music/track.mp3'],
+        ['./music/theme.mp3', './public/music/theme.mp3'],
+        ['./music/music.mp3', './public/music/music.mp3']
     ];
     
     let fileIndex = 0;
@@ -246,29 +284,30 @@ function tryAlternativeMusicFiles(audioLoader) {
             return;
         }
         
-        const filename = possibleFilenames[fileIndex];
+        const paths = possibleFilenames[fileIndex];
         fileIndex++;
         
-        console.log(`Trying to load music from: ${filename}`);
+        console.log(`Trying to load alternative music file`);
         updateLoadingStatus('music', 'loading', 0);
         
-        audioLoader.load(filename, 
+        loadSoundWithFallbacks(
+            audioLoader,
+            paths,
             function(buffer) {
                 backgroundMusic.setBuffer(buffer);
                 backgroundMusic.setLoop(true);
                 backgroundMusic.setVolume(0.7);
                 musicLoaded = true;
-                console.log(`Successfully loaded music from: ${filename}`);
+                console.log(`Successfully loaded alternative music`);
                 updateLoadingStatus('music', 'complete');
                 checkAndShowAudioStartMessage();
             },
-            function(xhr) {
-                const progress = Math.round(xhr.loaded / xhr.total * 100);
-                console.log(`${filename}: ${progress}% loaded`);
+            function(progress) {
+                console.log(`Alternative music: ${Math.round(progress)}% loaded`);
                 updateLoadingStatus('music', 'loading', progress);
             },
             function(err) {
-                console.error(`Failed to load ${filename}: ${err}`);
+                console.error(`Failed to load alternative music: ${err}`);
                 updateLoadingStatus('music', 'error');
                 tryNextFile();
             }
