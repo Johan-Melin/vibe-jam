@@ -90,8 +90,8 @@ function setupTouchControls() {
         // Reset the visual appearance of zones
         const leftZone = document.getElementById('touch-zone-left');
         const rightZone = document.getElementById('touch-zone-right');
-        if (leftZone) leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-        if (rightZone) rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+        if (leftZone) leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0)';
+        if (rightZone) rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0)';
     });
 }
 
@@ -108,7 +108,7 @@ function createTouchZones() {
     leftZone.style.left = '0';
     leftZone.style.width = '50%';
     leftZone.style.height = '100%';
-    leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0)';
     leftZone.style.zIndex = '999';
     leftZone.style.pointerEvents = 'auto'; // Allow touch events
     leftZone.style.cursor = 'pointer';
@@ -133,7 +133,7 @@ function createTouchZones() {
     rightZone.style.right = '0';
     rightZone.style.width = '50%';
     rightZone.style.height = '100%';
-    rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0)';
     rightZone.style.zIndex = '999';
     rightZone.style.pointerEvents = 'auto'; // Allow touch events
     rightZone.style.cursor = 'pointer';
@@ -156,7 +156,6 @@ function createTouchZones() {
         vehicleControls.touch.active = true;
         vehicleControls.touch.side = 'left';
         vehicleControls.keys.left = true;
-        leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
         
         // Reset immediately to allow rapid tapping
         setTimeout(() => {
@@ -172,7 +171,6 @@ function createTouchZones() {
         vehicleControls.touch.active = true;
         vehicleControls.touch.side = 'right';
         vehicleControls.keys.right = true;
-        rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
         
         // Reset immediately to allow rapid tapping
         setTimeout(() => {
@@ -188,7 +186,6 @@ function createTouchZones() {
         vehicleControls.touch.active = false;
         vehicleControls.touch.side = null;
         vehicleControls.keys.left = false;
-        leftZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
     };
     
     // Function to reset right touch state
@@ -197,7 +194,6 @@ function createTouchZones() {
         vehicleControls.touch.active = false;
         vehicleControls.touch.side = null;
         vehicleControls.keys.right = false;
-        rightZone.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
     };
     
     // Add touch event listeners for touchscreen
