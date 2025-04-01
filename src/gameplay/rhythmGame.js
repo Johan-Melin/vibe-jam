@@ -432,6 +432,21 @@ function updateOvalPortal(currentTime, scene) {
         distanceFromVehicle = -pastDistance;
     }
     
+    // Check if portal has passed far behind the car
+    if (distanceFromVehicle < -300) { // Increased from -10 to -30 for a longer period without portals
+        // Reset portal to appear in front of the car again
+        console.log("Resetting oval portal position to front of car");
+        
+        // Add extra delay before the portal reappears
+        const extraDelay = rhythmGame.beatInterval * 8; // 8 beats of delay
+        
+        // Update portal's beat time to a future time with extra delay
+        portal.userData.beatTime = currentTime + (rhythmGame.beatInterval * 4) + extraDelay;
+        
+        // Calculate new distance (far in front of the car)
+        distanceFromVehicle = rhythmGame.spawnDistance * 1.5; // 1.5x further than normal spawn distance
+    }
+    
     // Update portal position
     const laneIndex = portal.userData.lane;
     const lanePos = rhythmGame.lanePositions[laneIndex];
@@ -462,13 +477,16 @@ function updateOvalPortal(currentTime, scene) {
     
     // No rotation - keep the portal static
     
-    // Remove portal if it's gone too far past the player
+    // Remove portal if it's gone too far past the player and we don't want to reposition it
+    // This is commented out since we're now repositioning the portal instead of removing it
+    /*
     if (distanceFromVehicle < -rhythmGame.despawnDistance * 2) {
         if (scene) {
             scene.remove(portal);
         }
         rhythmGame.ovalPortal = null;
     }
+    */
 }
 
 // Create a portal that looks like a red oval (start portal)
@@ -634,6 +652,21 @@ function updateRedStartPortal(currentTime, scene) {
         distanceFromVehicle = -pastDistance;
     }
     
+    // Check if portal has passed far behind the car
+    if (distanceFromVehicle < -300) { // Increased from -10 to -30 for a longer period without portals
+        // Reset portal to appear in front of the car again
+        console.log("Resetting red portal position to front of car");
+        
+        // Add extra delay before the portal reappears
+        const extraDelay = rhythmGame.beatInterval * 6; // 6 beats of delay (slightly different from oval portal)
+        
+        // Update portal's beat time to a future time with extra delay
+        portal.userData.beatTime = currentTime + (rhythmGame.beatInterval * 4) + extraDelay;
+        
+        // Calculate new distance (far in front of the car)
+        distanceFromVehicle = rhythmGame.spawnDistance * 1.3; // 1.3x further than normal spawn distance
+    }
+    
     // Update portal position
     const laneIndex = portal.userData.lane;
     const lanePos = rhythmGame.lanePositions[laneIndex];
@@ -662,13 +695,16 @@ function updateRedStartPortal(currentTime, scene) {
         portal.userData.particles.attributes.position.needsUpdate = true;
     }
     
-    // Remove portal if it's gone too far past the player
+    // Remove portal if it's gone too far past the player and we don't want to reposition it
+    // This is commented out since we're now repositioning the portal instead of removing it
+    /*
     if (distanceFromVehicle < -rhythmGame.despawnDistance * 2) {
         if (scene) {
             scene.remove(portal);
         }
         rhythmGame.redStartPortal = null;
     }
+    */
 }
 
 // Initialize the rhythm game system
