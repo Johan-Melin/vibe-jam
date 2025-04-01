@@ -64,7 +64,7 @@ function setupAudio(camera) {
     // Load music with path fallbacks
     loadSoundWithFallbacks(
         audioLoader,
-        ['./music/Electric Fever Dream.mp3', './public/music/Electric Fever Dream.mp3'],
+        ['./music/Electric.mp3', './public/music/Electric.mp3'],
         (buffer) => {
             backgroundMusic.setBuffer(buffer);
             backgroundMusic.setLoop(true);
