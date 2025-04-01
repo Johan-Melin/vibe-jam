@@ -40,7 +40,8 @@ const rhythmGame = {
     fadeInDistance: 180, // Distance at which cubes start to fade in
     fadeDistance: 120, // Distance at which cubes are fully visible
     firstBeatOccurred: false,
-    ovalPortal: null
+    ovalPortal: null,
+    redStartPortal: null // Red start portal in left lane
 };
 
 // Create a cube for the rhythm game with neon style
@@ -407,6 +408,176 @@ function updateOvalPortal(currentTime, scene) {
     }
 }
 
+// Create a portal that looks like a red oval (start portal)
+function createRedStartPortal(scene, laneIndex) {
+    // Create portal group
+    const portalGroup = new THREE.Group();
+    
+    // Get lane position for the left lane
+    const lanePos = rhythmGame.lanePositions[laneIndex];
+    
+    // Position the portal in the left lane at spawn distance
+    portalGroup.position.set(
+        lanePos.x,
+        2, // Slightly above ground level
+        -rhythmGame.spawnDistance // Same distance as cubes
+    );
+    
+    // Create oval ring (actually a scaled torus) - but smaller
+    const torusGeometry = new THREE.TorusGeometry(3, 0.3, 16, 50);
+    const torusMaterial = new THREE.MeshPhongMaterial({
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 1.2,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const torus = new THREE.Mesh(torusGeometry, torusMaterial);
+    // Scale to make it oval
+    torus.scale.set(1, 1.5, 1);
+    portalGroup.add(torus);
+    
+    // Create inner surface
+    const ovalGeometry = new THREE.CircleGeometry(2.8, 32);
+    const ovalMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const oval = new THREE.Mesh(ovalGeometry, ovalMaterial);
+    portalGroup.add(oval);
+    
+    // Add particles around the portal - fewer particles
+    const particleCount = 100;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleColors = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 3 + (Math.random() - 0.5) * 0.5;
+        
+        // Calculate positions in an oval shape
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius * 1.5; // Multiply by 1.5 for the oval shape
+        const z = (Math.random() - 0.5) * 0.3;
+        
+        particlePositions[i * 3] = x;
+        particlePositions[i * 3 + 1] = y;
+        particlePositions[i * 3 + 2] = z;
+        
+        // Red particles with some variation
+        particleColors[i * 3] = 0.8 + Math.random() * 0.2; // Lots of red
+        particleColors[i * 3 + 1] = 0.1 + Math.random() * 0.2; // Small amount of green
+        particleColors[i * 3 + 2] = 0.1 + Math.random() * 0.2; // Small amount of blue
+    }
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+    
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 0.1,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    portalGroup.add(particles);
+    
+    // Get the ref parameter from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const refValue = urlParams.get('ref') || '';
+    
+    // Construct redirect URL with ref parameter
+    let redirectURL = "http://portal.pieter.com";
+    if (refValue) {
+        redirectURL += `?ref=${refValue}`;
+    }
+    
+    // Store animation data
+    portalGroup.userData = {
+        active: true,
+        particles: particleGeometry,
+        spawnTime: performance.now(),
+        beatTime: performance.now() + (rhythmGame.beatInterval * 4), // Same timing as cubes
+        lane: laneIndex,
+        particlePositions: particlePositions,
+        particleCount: particleCount,
+        scene: scene, // Store scene reference
+        redirectURL: redirectURL, // URL to redirect when colliding with portal
+        isRedPortal: true // Flag to identify this as the red portal
+    };
+    
+    scene.add(portalGroup);
+    rhythmGame.redStartPortal = portalGroup;
+    
+    return portalGroup;
+}
+
+// Update the red start portal position and effects
+function updateRedStartPortal(currentTime, scene) {
+    if (!rhythmGame.redStartPortal) return;
+    
+    const portal = rhythmGame.redStartPortal;
+    // Use the stored scene reference
+    scene = scene || portal.userData.scene;
+    
+    // Calculate how far along its journey the portal is, just like cubes
+    const timeToBeat = portal.userData.beatTime - currentTime;
+    const totalDuration = rhythmGame.beatInterval * 4;
+    
+    let distanceFromVehicle;
+    if (timeToBeat >= 0) {
+        // Portal is still approaching the vehicle
+        distanceFromVehicle = (timeToBeat / totalDuration) * rhythmGame.spawnDistance;
+    } else {
+        // Portal has passed the beat time
+        const timeSinceBeat = -timeToBeat;
+        const pastDistance = (timeSinceBeat / totalDuration) * rhythmGame.spawnDistance;
+        distanceFromVehicle = -pastDistance;
+    }
+    
+    // Update portal position
+    const laneIndex = portal.userData.lane;
+    const lanePos = rhythmGame.lanePositions[laneIndex];
+    portal.position.x = lanePos.x;
+    portal.position.z = -distanceFromVehicle;
+    
+    // Animate particles with subtle pulsing only (no spinning)
+    if (portal.userData.particles) {
+        const positions = portal.userData.particlePositions;
+        const particleCount = portal.userData.particleCount;
+        
+        for (let i = 0; i < particleCount; i++) {
+            // Apply a subtle pulsing effect instead of rotation
+            const pulseFactor = Math.sin(currentTime * 0.001 + i) * 0.05;
+            const baseIndex = i * 3;
+            
+            // Original position is maintained, just add subtle variation
+            const originalX = positions[baseIndex];
+            const originalY = positions[baseIndex + 1];
+            
+            // Subtle pulse effect
+            positions[baseIndex] = originalX * (1 + pulseFactor);
+            positions[baseIndex + 1] = originalY * (1 + pulseFactor);
+        }
+        
+        portal.userData.particles.attributes.position.needsUpdate = true;
+    }
+    
+    // Remove portal if it's gone too far past the player
+    if (distanceFromVehicle < -rhythmGame.despawnDistance * 2) {
+        if (scene) {
+            scene.remove(portal);
+        }
+        rhythmGame.redStartPortal = null;
+    }
+}
+
 // Initialize the rhythm game system
 function initRhythmGameSystem(scene, laneWidth) {
     // Clear any existing cubes
@@ -448,6 +619,18 @@ function initRhythmGameSystem(scene, laneWidth) {
     // Add flag to track if first beat has happened
     rhythmGame.firstBeatOccurred = false;
     rhythmGame.ovalPortal = null;
+    rhythmGame.redStartPortal = null;
+    
+    // Check for portal URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasPortalParam = urlParams.get('portal') === 'true';
+    const hasRefParam = urlParams.has('ref');
+    
+    // Create the red start portal if URL has portal=true and ref parameters
+    if (hasPortalParam && hasRefParam) {
+        console.log("Creating red start portal in left lane based on URL parameters");
+        createRedStartPortal(scene, 0); // 0 is left lane
+    }
     
     return rhythmGame;
 }
@@ -718,10 +901,18 @@ function checkCubeCollisions(vehicle) {
 
 // Check for portal collisions with the vehicle
 function checkPortalCollisions(vehicle) {
-    if (!vehicle || !rhythmGame.ovalPortal) return;
+    if (!vehicle) return;
+    
+    // Check both portals
+    checkSinglePortalCollision(vehicle, rhythmGame.ovalPortal);
+    checkSinglePortalCollision(vehicle, rhythmGame.redStartPortal);
+}
+
+// Check collision with a single portal
+function checkSinglePortalCollision(vehicle, portal) {
+    if (!portal) return;
     
     const vehiclePosition = vehicle.group.position.clone();
-    const portal = rhythmGame.ovalPortal;
     const portalPosition = portal.position.clone();
     
     // Use a slightly larger collision distance for the portal
@@ -737,27 +928,37 @@ function checkPortalCollisions(vehicle) {
         
         // Get the redirect URL from portal userData
         const redirectURL = portal.userData.redirectURL;
+        const isRedPortal = portal.userData.isRedPortal;
         
         // Create visual effect for portal entry
-        createPortalEntryEffect(portal.position.clone());
+        createPortalEntryEffect(portal.position.clone(), isRedPortal);
         
         // Remove the portal after collision
         if (portal.userData.scene) {
             portal.userData.scene.remove(portal);
         }
-        rhythmGame.ovalPortal = null;
+        
+        // Clear the right reference
+        if (isRedPortal) {
+            rhythmGame.redStartPortal = null;
+        } else {
+            rhythmGame.ovalPortal = null;
+        }
         
         // Redirect to the URL
         if (redirectURL) {
             console.log(`Redirecting to ${redirectURL}`);
-            // Open in a new tab to avoid disrupting the game
-            window.open(redirectURL, '_blank');
+            // Redirect in current window
+            window.location.href = redirectURL;
         }
     }
 }
 
 // Create a visual effect when entering the portal
-function createPortalEntryEffect(position) {
+function createPortalEntryEffect(position, isRedPortal) {
+    // Choose color based on portal type
+    const color = isRedPortal ? 'rgba(255, 0, 0, 0.5)' : 'rgba(0, 255, 0, 0.5)';
+    
     // Flash effect on screen
     const flashOverlay = document.createElement('div');
     flashOverlay.style.position = 'fixed';
@@ -765,7 +966,7 @@ function createPortalEntryEffect(position) {
     flashOverlay.style.left = '0';
     flashOverlay.style.width = '100%';
     flashOverlay.style.height = '100%';
-    flashOverlay.style.backgroundColor = 'rgba(0, 255, 0, 0.5)';
+    flashOverlay.style.backgroundColor = color;
     flashOverlay.style.zIndex = '1000';
     flashOverlay.style.transition = 'opacity 1s ease-out';
     flashOverlay.style.opacity = '0.8';
@@ -878,13 +1079,18 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     // Update floating scores
     updateFloatingScores(scene, currentTime);
     
-    // Update oval portal - pass the scene parameter
+    // Update green oval portal
     if (rhythmGame.ovalPortal) {
         updateOvalPortal(currentTime, scene);
-        
-        // Check for portal collisions
-        checkPortalCollisions(vehicle);
     }
+    
+    // Update red start portal
+    if (rhythmGame.redStartPortal) {
+        updateRedStartPortal(currentTime, scene);
+    }
+    
+    // Check for portal collisions
+    checkPortalCollisions(vehicle);
     
     // Check for cube collection
     checkCubeCollisions(vehicle);
@@ -1022,5 +1228,6 @@ export {
     rhythmGame,
     getScoreInfo,
     checkPortalCollisions,
-    createPortalEntryEffect
+    createPortalEntryEffect,
+    createRedStartPortal
 }; 
