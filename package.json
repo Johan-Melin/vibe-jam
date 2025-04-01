@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "description": "A Three.js rhythm game where you navigate a vehicle to the beat of the music",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npx serve"
+    "start": "npx serve",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [
     "game",
@@ -19,6 +22,7 @@
     "three": "^0.161.0"
   },
   "devDependencies": {
-    "serve": "^14.2.4"
+    "serve": "^14.2.4",
+    "vite": "^5.0.10"
   }
 }

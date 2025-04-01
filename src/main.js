@@ -1,3 +1,4 @@
+// Direct import from node_modules - Vite will handle this properly
 import * as THREE from 'three';
 
 // Import engine modules
