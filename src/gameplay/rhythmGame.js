@@ -289,6 +289,41 @@ function createOvalPortal(scene, laneIndex) {
     const oval = new THREE.Mesh(ovalGeometry, ovalMaterial);
     portalGroup.add(oval);
     
+    // Add "VIBE" text above the portal
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = 256;
+    textCanvas.height = 128;
+    const textContext = textCanvas.getContext('2d');
+    
+    // Clear the canvas
+    textContext.fillStyle = 'rgba(0, 0, 0, 0)';
+    textContext.fillRect(0, 0, textCanvas.width, textCanvas.height);
+    
+    // Add text
+    textContext.font = 'bold 72px Arial';
+    textContext.textAlign = 'center';
+    textContext.textBaseline = 'middle';
+    
+    // Add green glow effect
+    textContext.shadowColor = '#00ff00';
+    textContext.shadowBlur = 20;
+    textContext.fillStyle = '#ffffff';
+    textContext.fillText('VIBE', textCanvas.width / 2, textCanvas.height / 2);
+    
+    // Create texture from canvas
+    const textTexture = new THREE.CanvasTexture(textCanvas);
+    const textMaterial = new THREE.SpriteMaterial({
+        map: textTexture,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    // Create sprite
+    const textSprite = new THREE.Sprite(textMaterial);
+    textSprite.position.y = 5; // Position above the portal
+    textSprite.scale.set(8, 4, 1); // Adjust size as needed
+    portalGroup.add(textSprite);
+    
     // Add particles around the portal - fewer particles
     const particleCount = 100;
     const particleGeometry = new THREE.BufferGeometry();
@@ -327,6 +362,10 @@ function createOvalPortal(scene, laneIndex) {
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     portalGroup.add(particles);
     
+    // Get all URL parameters to preserve them in the redirect
+    const currentUrl = new URL(window.location.href);
+    const queryString = currentUrl.search.substring(1); // Remove the '?' at the beginning
+    
     // Store animation data
     portalGroup.userData = {
         active: true,
@@ -337,7 +376,8 @@ function createOvalPortal(scene, laneIndex) {
         particlePositions: particlePositions,
         particleCount: particleCount,
         scene: scene, // Store scene reference
-        redirectURL: "http://portal.pieter.com" // URL to redirect when colliding with portal
+        redirectURL: "http://portal.pieter.com", // Base URL to redirect when colliding with portal
+        queryParams: queryString // Store all current query parameters
     };
     
     scene.add(portalGroup);
@@ -450,6 +490,41 @@ function createRedStartPortal(scene, laneIndex) {
     const oval = new THREE.Mesh(ovalGeometry, ovalMaterial);
     portalGroup.add(oval);
     
+    // Add "RETURN" text above the portal
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = 512; // Increased from 256 to provide more space
+    textCanvas.height = 128;
+    const textContext = textCanvas.getContext('2d');
+    
+    // Clear the canvas
+    textContext.fillStyle = 'rgba(0, 0, 0, 0)';
+    textContext.fillRect(0, 0, textCanvas.width, textCanvas.height);
+    
+    // Add text
+    textContext.font = 'bold 64px Arial'; // Slightly smaller font
+    textContext.textAlign = 'center';
+    textContext.textBaseline = 'middle';
+    
+    // Add red glow effect
+    textContext.shadowColor = '#ff0000';
+    textContext.shadowBlur = 20;
+    textContext.fillStyle = '#ffffff';
+    textContext.fillText('RETURN', textCanvas.width / 2, textCanvas.height / 2);
+    
+    // Create texture from canvas
+    const textTexture = new THREE.CanvasTexture(textCanvas);
+    const textMaterial = new THREE.SpriteMaterial({
+        map: textTexture,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    // Create sprite
+    const textSprite = new THREE.Sprite(textMaterial);
+    textSprite.position.y = 5; // Position above the portal
+    textSprite.scale.set(10, 4, 1); // Increased width to accommodate wider text
+    portalGroup.add(textSprite);
+    
     // Add particles around the portal - fewer particles
     const particleCount = 100;
     const particleGeometry = new THREE.BufferGeometry();
@@ -488,15 +563,9 @@ function createRedStartPortal(scene, laneIndex) {
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     portalGroup.add(particles);
     
-    // Get the ref parameter from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const refValue = urlParams.get('ref') || '';
-    
-    // Construct redirect URL with ref parameter
-    let redirectURL = "http://portal.pieter.com";
-    if (refValue) {
-        redirectURL += `?ref=${refValue}`;
-    }
+    // Get all query parameters to preserve them in the redirect
+    const currentUrl = new URL(window.location.href);
+    const queryString = currentUrl.search.substring(1); // Remove the '?' at the beginning
     
     // Store animation data
     portalGroup.userData = {
@@ -508,7 +577,8 @@ function createRedStartPortal(scene, laneIndex) {
         particlePositions: particlePositions,
         particleCount: particleCount,
         scene: scene, // Store scene reference
-        redirectURL: redirectURL, // URL to redirect when colliding with portal
+        redirectURL: "http://portal.pieter.com", // Base URL to redirect
+        queryParams: queryString, // Store all current query parameters
         isRedPortal: true // Flag to identify this as the red portal
     };
     
@@ -926,9 +996,15 @@ function checkSinglePortalCollision(vehicle, portal) {
     if (zDistance < collisionDistance && xDistance < rhythmGame.laneWidth * 0.7) {
         console.log("Portal collision detected!");
         
-        // Get the redirect URL from portal userData
-        const redirectURL = portal.userData.redirectURL;
+        // Get the redirect URL and query parameters from portal userData
+        let redirectURL = portal.userData.redirectURL;
+        const queryParams = portal.userData.queryParams;
         const isRedPortal = portal.userData.isRedPortal;
+        
+        // Add query parameters to the redirect URL if they exist
+        if (queryParams && queryParams.length > 0) {
+            redirectURL += `?${queryParams}`;
+        }
         
         // Create visual effect for portal entry
         createPortalEntryEffect(portal.position.clone(), isRedPortal);
