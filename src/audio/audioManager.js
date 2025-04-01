@@ -218,6 +218,9 @@ function checkAllAudioLoaded() {
                 loadingDiv.style.opacity = '0';
                 setTimeout(() => {
                     loadingDiv.style.display = 'none';
+                    
+                    // Automatically start audio when everything is loaded
+                    startAudioAutomatically();
                 }, 1000);
             }, 1500); // Show the completed status for 1.5 seconds before fading
         }
@@ -227,7 +230,8 @@ function checkAllAudioLoaded() {
 // Only show the audio start message when both engine and music are loaded
 function checkAndShowAudioStartMessage() {
     if (audioLoaded && musicLoaded) {
-        showAudioStartMessage();
+        // No longer showing message, starting automatically instead
+        startAudioAutomatically();
     }
 }
 
@@ -389,7 +393,50 @@ function toggleAudio() {
     return musicPlaying;
 }
 
+// Start audio automatically without requiring user interaction
+function startAudioAutomatically() {
+    // Only start if not already playing
+    if (musicPlaying) return;
+    
+    console.log("Starting audio automatically");
+    
+    if (audioContext && audioContext.state !== 'running') {
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+            
+            // Start both engine and music
+            if (!engineSound.isPlaying) {
+                engineSound.play();
+                console.log("Engine sound started automatically");
+            }
+            
+            if (backgroundMusic && !backgroundMusic.isPlaying) {
+                backgroundMusic.play();
+                musicPlaying = true;
+                console.log("Background music started automatically");
+            }
+        }).catch(err => {
+            console.error("Failed to start audio context automatically:", err);
+            // Fall back to showing message if auto-start fails
+            showAudioStartMessage();
+        });
+    } else {
+        // Context already running, just play the sounds
+        if (!engineSound.isPlaying) {
+            engineSound.play();
+            console.log("Engine sound started automatically");
+        }
+        
+        if (backgroundMusic && !backgroundMusic.isPlaying) {
+            backgroundMusic.play();
+            musicPlaying = true;
+            console.log("Background music started automatically");
+        }
+    }
+}
+
 // Display a message to the user about starting audio
+// This is now only used as a fallback if automatic start fails
 function showAudioStartMessage() {
     // Create a simple overlay message
     const messageDiv = document.createElement('div');

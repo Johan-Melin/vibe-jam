@@ -98,7 +98,7 @@ function createSceneInfoPanel(renderer, scene, camera) {
     document.body.appendChild(infoPanel);
 
     // Toggle visibility with 'D' key
-    let visible = true;
+    let visible = false;
     window.addEventListener('keydown', (event) => {
         if (event.key === 'd' || event.key === 'D') {
             visible = !visible;
