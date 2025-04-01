@@ -46,9 +46,9 @@ const rhythmGame = {
     obstaclePool: [], // Pool for obstacle vehicles
     activeObstacles: [], // Active obstacle vehicles
     obstaclePoolSize: 15, // Number of obstacle vehicles to pre-create
-    obstacleSpawnInterval: 5000, // Minimum time between obstacle spawns (ms)
+    obstacleSpawnInterval: 3000, // Minimum time between obstacle spawns (ms) - reduced from 5000
     lastObstacleTime: 0, // When the last obstacle was spawned
-    obstacleSpawnChance: 0.3, // Chance to spawn obstacle on beat
+    obstacleSpawnChance: 0.6, // Chance to spawn obstacle on beat - increased from 0.3
     obstacleCollisionDistance: 3.0, // Distance at which collisions with obstacles are detected
     obstacleCloseCallDistance: 5.0, // Distance for tracking near misses with obstacles
     collisionOccurred: false, // Flag to track if a collision has happened
@@ -60,7 +60,11 @@ const rhythmGame = {
         0xff0000, // Red for left lane
         0xffaa00, // Orange for center lane
         0xffff00  // Yellow for right lane
-    ]
+    ],
+    obstacleLaneSpawnStatus: [0, 0, 0], // Track when each lane last had an obstacle spawned
+    obstacleMinLaneInterval: 2000, // Minimum time between obstacle spawns in same lane
+    obstaclesTilNextCube: 0, // Counter to balance obstacle/cube ratios
+    maxObstaclesInRow: 3 // Maximum obstacles to spawn before forcing a cube
 };
 
 // Create a cube for the rhythm game with neon style
@@ -1147,6 +1151,30 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     // Beat detection
     const timeSinceLastBeat = currentTime - rhythmGame.lastBeatTime;
     
+    // Occasionally spawn obstacle vehicles (independent of beat)
+    const timeSinceLastObstacle = currentTime - rhythmGame.lastObstacleTime;
+    if (timeSinceLastObstacle > rhythmGame.obstacleSpawnInterval && Math.random() < rhythmGame.obstacleSpawnChance) {
+        rhythmGame.lastObstacleTime = currentTime;
+        
+        // Spawn obstacles in different lanes
+        for (let i = 0; i < rhythmGame.lanes; i++) {
+            // Check if we should spawn in this lane based on timing
+            const now = performance.now();
+            const timeSinceLastInLane = now - rhythmGame.obstacleLaneSpawnStatus[i];
+            
+            // Don't oversaturate with obstacles, and ensure varied patterns
+            if (timeSinceLastInLane > rhythmGame.obstacleMinLaneInterval && Math.random() < 0.5) {
+                const beatTime = currentTime + (rhythmGame.beatInterval * 4);
+                spawnObstacleVehicle(scene, i, beatTime);
+                rhythmGame.obstacleLaneSpawnStatus[i] = now;
+                
+                // Increment obstacle counter
+                rhythmGame.obstaclesTilNextCube++;
+            }
+        }
+    }
+    
+    // Process beat detection (for both cubes and obstacles)
     if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
         rhythmGame.lastBeatTime = currentTime;
         
@@ -1159,47 +1187,57 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
             console.log("Green oval portal created in right lane");
         }
         
-        // Only spawn one cube per beat, randomly selecting a lane
-        const lane = Math.floor(Math.random() * rhythmGame.lanes);
-        const beatTime = currentTime + (rhythmGame.beatInterval * 4);
-        spawnBeatCube(scene, lane, beatTime);
+        // Decision: spawn cube or obstacle based on recent history
+        // Force cube spawn if we've had too many obstacles in a row
+        const shouldSpawnCube = rhythmGame.obstaclesTilNextCube >= rhythmGame.maxObstaclesInRow || Math.random() < 0.7;
         
-        // In fast tempo, spawn more cubes
-        if (rhythmGame.isFastTempo && Math.random() < 0.6) {
-            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
-            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
-            spawnBeatCube(scene, additionalLane, additionalBeatTime);
-        }
-        // Normal tempo - less cubes
-        else if (Math.random() < 0.3) {
-            const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
-            const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
-            spawnBeatCube(scene, additionalLane, additionalBeatTime);
-        }
-    }
-    
-    // Occasionally spawn obstacle vehicles (independent of beat)
-    const timeSinceLastObstacle = currentTime - rhythmGame.lastObstacleTime;
-    if (timeSinceLastObstacle > rhythmGame.obstacleSpawnInterval && Math.random() < rhythmGame.obstacleSpawnChance) {
-        rhythmGame.lastObstacleTime = currentTime;
-        
-        // Choose a random lane for the obstacle
-        const lane = Math.floor(Math.random() * rhythmGame.lanes);
-        const beatTime = currentTime + (rhythmGame.beatInterval * 4);
-        
-        // Spawn obstacle
-        spawnObstacleVehicle(scene, lane, beatTime);
-    }
-    
-    // Also potentially spawn obstacle with beat detection (instead of a cube)
-    if (bassEnergy > rhythmGame.beatDetectionThreshold && timeSinceLastBeat > minBeatInterval) {
-        // ... existing beat detection code ...
-        
-        // Chance to spawn obstacle instead of cube on beat
-        if (Math.random() < 0.15) { // 15% chance
+        if (shouldSpawnCube) {
+            // Spawn cube
             const lane = Math.floor(Math.random() * rhythmGame.lanes);
             const beatTime = currentTime + (rhythmGame.beatInterval * 4);
-            spawnObstacleVehicle(scene, lane, beatTime);
+            spawnBeatCube(scene, lane, beatTime);
+            
+            // Reset obstacle counter
+            rhythmGame.obstaclesTilNextCube = 0;
+            
+            // In fast tempo, spawn more cubes
+            if (rhythmGame.isFastTempo && Math.random() < 0.6) {
+                const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
+                const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
+                spawnBeatCube(scene, additionalLane, additionalBeatTime);
+            }
+            // Normal tempo - less cubes
+            else if (Math.random() < 0.3) {
+                const additionalLane = (lane + 1 + Math.floor(Math.random() * 2)) % rhythmGame.lanes;
+                const additionalBeatTime = beatTime + (rhythmGame.beatInterval * 0.5);
+                spawnBeatCube(scene, additionalLane, additionalBeatTime);
+            }
+        } else {
+            // Spawn obstacles across different lanes
+            const lanesUsed = new Set();
+            const numObstaclesToSpawn = rhythmGame.isFastTempo ? 
+                Math.floor(Math.random() * 2) + 1 : // 1-2 obstacles in fast tempo
+                1; // just 1 in normal tempo
+            
+            for (let i = 0; i < numObstaclesToSpawn; i++) {
+                // Pick a lane that hasn't been used yet
+                let lane;
+                do {
+                    lane = Math.floor(Math.random() * rhythmGame.lanes);
+                } while (lanesUsed.has(lane) && lanesUsed.size < rhythmGame.lanes);
+                
+                // Add to used lanes
+                lanesUsed.add(lane);
+                
+                const beatTime = currentTime + (rhythmGame.beatInterval * 4);
+                // Use different timing for obstacles in different lanes
+                const actualBeatTime = beatTime + (i * rhythmGame.beatInterval * 0.3);
+                
+                spawnObstacleVehicle(scene, lane, actualBeatTime);
+                
+                // Increment obstacle counter
+                rhythmGame.obstaclesTilNextCube++;
+            }
         }
     }
     
@@ -1609,7 +1647,7 @@ function spawnObstacleVehicle(scene, lane, beatTime) {
     const now = performance.now();
     
     // Don't spawn if this lane has had something spawned recently
-    if (now - rhythmGame.laneSpawnStatus[lane] < rhythmGame.minLaneSpawnInterval * 1.5) {
+    if (now - rhythmGame.laneSpawnStatus[lane] < rhythmGame.minLaneSpawnInterval) {
         return null;
     }
     
@@ -1631,6 +1669,7 @@ function spawnObstacleVehicle(scene, lane, beatTime) {
     obstacle.userData.beatTime = beatTime;
     obstacle.userData.initialScale = 1;
     obstacle.userData.lastPosition.copy(obstacle.position);
+    obstacle.userData.closeCallTriggered = false; // Reset close call flag
     
     // Set color based on lane
     const laneColor = new THREE.Color(rhythmGame.obstacleColors[lane]);
@@ -1643,6 +1682,9 @@ function spawnObstacleVehicle(scene, lane, beatTime) {
     
     // Store spawn data
     rhythmGame.laneSpawnStatus[lane] = now;
+    rhythmGame.obstacleLaneSpawnStatus[lane] = now;
+    
+    console.log(`Spawned obstacle in lane ${lane}`); // Debug log
     
     return obstacle;
 }
