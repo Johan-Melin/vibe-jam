@@ -335,7 +335,8 @@ function createOvalPortal(scene, laneIndex) {
         lane: laneIndex,
         particlePositions: particlePositions,
         particleCount: particleCount,
-        scene: scene // Store scene reference
+        scene: scene, // Store scene reference
+        redirectURL: "http://portal.pieter.com" // URL to redirect when colliding with portal
     };
     
     scene.add(portalGroup);
@@ -715,6 +716,71 @@ function checkCubeCollisions(vehicle) {
     });
 }
 
+// Check for portal collisions with the vehicle
+function checkPortalCollisions(vehicle) {
+    if (!vehicle || !rhythmGame.ovalPortal) return;
+    
+    const vehiclePosition = vehicle.group.position.clone();
+    const portal = rhythmGame.ovalPortal;
+    const portalPosition = portal.position.clone();
+    
+    // Use a slightly larger collision distance for the portal
+    const collisionDistance = rhythmGame.collectDistance * 1.5;
+    
+    // Check if vehicle is within collision range of the portal
+    const zDistance = Math.abs(portalPosition.z - vehiclePosition.z);
+    const xDistance = Math.abs(portalPosition.x - vehiclePosition.x);
+    
+    // Check distance and lane alignment
+    if (zDistance < collisionDistance && xDistance < rhythmGame.laneWidth * 0.7) {
+        console.log("Portal collision detected!");
+        
+        // Get the redirect URL from portal userData
+        const redirectURL = portal.userData.redirectURL;
+        
+        // Create visual effect for portal entry
+        createPortalEntryEffect(portal.position.clone());
+        
+        // Remove the portal after collision
+        if (portal.userData.scene) {
+            portal.userData.scene.remove(portal);
+        }
+        rhythmGame.ovalPortal = null;
+        
+        // Redirect to the URL
+        if (redirectURL) {
+            console.log(`Redirecting to ${redirectURL}`);
+            // Open in a new tab to avoid disrupting the game
+            window.open(redirectURL, '_blank');
+        }
+    }
+}
+
+// Create a visual effect when entering the portal
+function createPortalEntryEffect(position) {
+    // Flash effect on screen
+    const flashOverlay = document.createElement('div');
+    flashOverlay.style.position = 'fixed';
+    flashOverlay.style.top = '0';
+    flashOverlay.style.left = '0';
+    flashOverlay.style.width = '100%';
+    flashOverlay.style.height = '100%';
+    flashOverlay.style.backgroundColor = 'rgba(0, 255, 0, 0.5)';
+    flashOverlay.style.zIndex = '1000';
+    flashOverlay.style.transition = 'opacity 1s ease-out';
+    flashOverlay.style.opacity = '0.8';
+    
+    document.body.appendChild(flashOverlay);
+    
+    // Fade out the flash effect
+    setTimeout(() => {
+        flashOverlay.style.opacity = '0';
+        setTimeout(() => {
+            document.body.removeChild(flashOverlay);
+        }, 1000);
+    }, 200);
+}
+
 // Process rhythm game beat detection and cube spawning
 function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) {
     if (!rhythmGame.enabled || !musicPlaying) return;
@@ -815,6 +881,9 @@ function updateRhythmGame(deltaTime, currentTime, musicPlaying, scene, vehicle) 
     // Update oval portal - pass the scene parameter
     if (rhythmGame.ovalPortal) {
         updateOvalPortal(currentTime, scene);
+        
+        // Check for portal collisions
+        checkPortalCollisions(vehicle);
     }
     
     // Check for cube collection
@@ -951,5 +1020,7 @@ export {
     updateRhythmGame, 
     spawnBeatCube, 
     rhythmGame,
-    getScoreInfo
+    getScoreInfo,
+    checkPortalCollisions,
+    createPortalEntryEffect
 }; 
