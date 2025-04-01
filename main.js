@@ -62,65 +62,6 @@ function setupAudio() {
     
     // Create status elements for loading progress
     createLoadingStatusElements();
-    
-    // Load engine sound
-    audioLoader.load('./sounds/engine_loop.mp3', function(buffer) {
-        engineSound.setBuffer(buffer);
-        engineSound.setLoop(true);
-        engineSound.setVolume(0.5);
-        // Don't autoplay - wait for user interaction
-        audioLoaded = true;
-        
-        // Start with idle engine sound when played
-        engineSound.setPlaybackRate(0.5);
-        
-        updateLoadingStatus('engine', 'complete');
-        
-        // Show a message to the user if both sounds are loaded
-        checkAndShowAudioStartMessage();
-    },
-    // onProgress callback
-    function(xhr) {
-        const progress = Math.round(xhr.loaded / xhr.total * 100);
-        console.log('Engine sound: ' + progress + '% loaded');
-        updateLoadingStatus('engine', 'loading', progress);
-    },
-    // onError callback
-    function(err) {
-        console.error('Could not load engine sound: ' + err);
-        updateLoadingStatus('engine', 'error');
-    });
-    
-    // Load background music
-    audioLoader.load('./music/Electric Fever Dream.mp3', function(buffer) {
-        backgroundMusic.setBuffer(buffer);
-        backgroundMusic.setLoop(true);
-        backgroundMusic.setVolume(0.7);
-        musicLoaded = true;  // Set the music loaded flag
-        console.log('Background music loaded successfully');
-        
-        // Set up audio analyzer once music is loaded
-        setupAudioAnalyzer();
-        
-        updateLoadingStatus('music', 'complete');
-        
-        // Show a message to the user if both sounds are loaded
-        checkAndShowAudioStartMessage();
-    },
-    // onProgress callback
-    function(xhr) {
-        const progress = Math.round(xhr.loaded / xhr.total * 100);
-        console.log('Background music: ' + progress + '% loaded');
-        updateLoadingStatus('music', 'loading', progress);
-    },
-    // onError callback
-    function(err) {
-        console.error('Could not load background music: ' + err);
-        updateLoadingStatus('music', 'error');
-        
-        // Try alternative file names if the first one fails
-        tryAlternativeMusicFiles(audioLoader);
-    });
 }
 
 // Create visual elements to show loading progress

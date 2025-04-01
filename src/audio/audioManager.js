@@ -33,10 +33,10 @@ function setupAudio(camera) {
     createLoadingStatusElements();
     
     // Load engine sound
-    audioLoader.load('./sounds/engine_loop.mp3', function(buffer) {
+    audioLoader.load('./public/sounds/engine_loop.mp3', function(buffer) {
         engineSound.setBuffer(buffer);
         engineSound.setLoop(true);
-        engineSound.setVolume(0.5);
+        engineSound.setVolume(0.05);
         // Don't autoplay - wait for user interaction
         audioLoaded = true;
         
@@ -61,7 +61,7 @@ function setupAudio(camera) {
     });
     
     // Load background music
-    audioLoader.load('./music/Electric Fever Dream.mp3', function(buffer) {
+    audioLoader.load('./public/music/Electric Fever Dream.mp3', function(buffer) {
         backgroundMusic.setBuffer(buffer);
         backgroundMusic.setLoop(true);
         backgroundMusic.setVolume(0.7);
